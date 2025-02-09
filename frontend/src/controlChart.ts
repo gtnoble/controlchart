@@ -4,7 +4,7 @@ import Chart, {
   Point,
 } from 'chart.js/auto';
 
-const DATA_URL = "data";
+const DATA_URL = location.pathname + "/data";
 
 const CONTROL_LIMIT_COLOR = "#FF0000";
 const MEAN_COLOR = "#00FF00";
@@ -16,6 +16,8 @@ const CONTROL_LIMIT_STYLE = {
   pointBorderColor: CONTROL_LIMIT_COLOR,
   pointBackgroundColor: CONTROL_LIMIT_COLOR,
   tension: 0,
+  spanGaps: true,
+  borderDash: [2,2],
   pointStyle: false
 };
 
@@ -25,6 +27,7 @@ const MEAN_STYLE = {
   pointBorderColor: MEAN_COLOR,
   pointBackgroundColor: MEAN_COLOR,
   tension: 0,
+  spanGaps: true,
   pointStyle: false
 };
 
@@ -45,42 +48,42 @@ interface ChartData {
   observations: {time: number, value: number, isSetup: boolean}[];
 }
 
-function makeEdgePoints(value: number, observations: ChartData["observations"]) {
-  const firstX = observations[0].x;
-  const lastX = observations.at(-1)?.x;
-  if (! lastX) {
-    throw new Error(`Observations array doesn't have a last element! Maybe it's empty?`)
-  }
-  return [{x: firstX, y: value}, {x: lastX, y: value}];
+function makeEdgePoints(value: number, observations: {x: number, y:number}[]) {
+  const points = observations.map((point, index) => ({x: point.x, y: value}));
+  return points;
 }
 
 (async function () {
 
-  const chartData: ChartData = await axios.get(DATA_URL);
+  const chartData: ChartData = (await axios.get(DATA_URL)).data;
   
-  const observations: Point[] = chartData.observations;
+  const observations: Point[] = chartData.observations.map((observation) => ({x: observation.time, y: observation.value}));
+  const labels: string[] = observations.map((observation) => (new Date(observation.x)).toLocaleString());
   const upperControlLimits = makeEdgePoints(chartData.upperControlLimit, observations);
   const lowerControlLimits  = makeEdgePoints(chartData.lowerControlLimit, observations);
   const mean = makeEdgePoints(chartData.mean, observations);
   
   const dataSets: ChartDataset[] =  [
     {
-      order: 0, 
-      data: mean,
-      ...MEAN_STYLE
-    },
-    {
       label: chartData.chartName,
-      order: 1, 
+      order: 0, 
       data: observations,
       ...OBSERVATION_STYLE
     },
     {
+      label: "Mean",
+      order: 1, 
+      data: mean,
+      ...MEAN_STYLE
+    },
+    {
+      label: "Upper Control Limit",
       order: 2, 
       data: upperControlLimits,
       ...CONTROL_LIMIT_STYLE
     },
     {
+      label: "Lower Control Limit",
       order: 3, 
       data: lowerControlLimits,
       ...CONTROL_LIMIT_STYLE
@@ -99,7 +102,7 @@ function makeEdgePoints(value: number, observations: ChartData["observations"]) 
     chartElement,
     {
       type: 'line',
-      data: {datasets: dataSets, labels: chartData.labels}
+      data: {datasets: dataSets, labels: labels}
     }
   )
 })()

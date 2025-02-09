@@ -59,9 +59,8 @@ export class ChartDb {
         chartType STRING,
         dataName STRING,
         setupStartTime INTEGER,
-        setupEndTime INTEGER
-        aggregationInterval INTEGER,
-        FOREIGN KEY(dataName) REFERENCES chart_data(dataName)
+        setupEndTime INTEGER,
+        aggregationInterval INTEGER
       );`).run()
 
     this.initializeChartQuery = this.database.prepare(
@@ -92,7 +91,11 @@ export class ChartDb {
     )
     
     this.getChartPointsQuery = this.database.prepare(
-      `SELECT time, value FROM chart_data WHERE dataName = ? AND time BETWEEN ? AND ?`
+      `
+      SELECT time, value 
+      FROM chart_data 
+      WHERE dataName = ? AND time BETWEEN ? AND ?
+      ORDER BY time`
     )
     
     this.getCountsQuery = this.database.prepare(
@@ -133,8 +136,8 @@ export class ChartDb {
         chartName: chartName,
         chartType: chartType,
         dataName: dataName,
-        setupStartTime: setupStartTime.getUTCMilliseconds(),
-        setupEndTime: setupEndTime.getUTCMilliseconds(),
+        setupStartTime: setupStartTime.valueOf(),
+        setupEndTime: setupEndTime.valueOf(),
         aggregationInterval: aggregationInterval
       });
   }
@@ -210,7 +213,7 @@ export class ChartDb {
     const observations = points.map((point) => {
       return {
         ...point, 
-        isSetup: point.value >= parameters.setupStartTime && point.value <= parameters.setupEndTime
+        isSetup: point.time >= parameters.setupStartTime && point.time <= parameters.setupEndTime
       }
     })
     

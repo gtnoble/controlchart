@@ -17,6 +17,6 @@
     "chart.js": "^4.4.7",
     "typescript": "^5.7.3"
   },
-  "source": "src/index.html",
+  "source": "src/chart.html",
   "type": "module"
 }
