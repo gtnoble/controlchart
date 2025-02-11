@@ -162,6 +162,10 @@ SELECT block_id, block_start, record_count FROM time_blocks;
   getEarliestDataTime(dataName: string) {
     return (this.getEarliestDataTimeQuery.get({data_name: dataName}) as {time: number}).time;
   }
+  
+  getChartDataLimits(chart: ChartParametersSchema) {
+    return [this.getEarliestDataTime(chart.dataName), this.getLatestDataTime(chart.dataName)];
+  }
 
   initializeChart(
     chartName: string,

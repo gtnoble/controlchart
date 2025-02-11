@@ -96,6 +96,7 @@ chartSelectDropdown.addEventListener('show.bs.dropdown', updateChartDropdown);
     throw new Error(`${chartElement} must refer to a canvas tag`);
   }
   
+  const queryOptions = new URLSearchParams(window.location.search);
   const chart = new Chart(
       chartElement,
       {
@@ -104,24 +105,35 @@ chartSelectDropdown.addEventListener('show.bs.dropdown', updateChartDropdown);
       }
     )
 
+  const currentURLComponents = new URL(window.location.href).pathname.split('/');
+  const chartName = currentURLComponents[2];
+  const currentStartTime = Number(currentURLComponents[4]);
+  const currentEndTime = Number(currentURLComponents[6]);
+
   jQuery(() => {
     jQuery("#chart-range").daterangepicker(
       {
-        timePicker: true
+        timePicker: true,
+        startDate: new Date(currentStartTime),
+        endDate: new Date(currentEndTime),
       },
       async (start, stop) => {
-        chart.data = await getData(start.toDate(), stop.toDate());
-        chart.update();
+        const currentURL = new URL(window.location.href);
+        const startTime = start.toDate().valueOf().toString();
+        const endTime = stop.toDate().valueOf().toString();
+        
+        const updatedPlotURL = `/chart/${chartName}/startTime/${startTime}/endTime/${endTime}`
+
+        window.location.replace(updatedPlotURL);
       }
     )
   })
 
 
-  async function getData (startDate: Date = new Date(0), endDate: Date = new Date()) {
+  async function getData (startDate?: string, endDate?: string) {
 
     const chartData: ChartData = (await axios.get(
-      DATA_URL, 
-      {params: {startTime: startDate.valueOf(), endtime: endDate.valueOf()}})
+      DATA_URL)
     ).data;
     
     const observations: Point[] = chartData.observations.map(

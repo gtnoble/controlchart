@@ -23,10 +23,17 @@ export async function startServer (databaseFilename: string) {
   })
 
   fastify.get('/chart/:chartName', function (req, reply) {
-    reply.sendFile("chart.html");
+    const params: any = req.params;
+    const chartParams = database.getChartParameters(params.chartName);
+    const dataLimits = database.getChartDataLimits(chartParams);
+    reply.redirect(`/chart/${params.chartName}/startTime/${dataLimits[0]}/endTime/${dataLimits[1]}`)
+  })
+  
+  fastify.get('/chart/:chartName/startTime/:startTime/endTime/:endTime', function (req, reply) {
+    reply.sendFile("chart.html")
   })
 
-  fastify.get('/chart/:chartName/:filename', function (req, reply) {
+  fastify.get('/chart/:chartName/startTime/:startTime/endTime/:endTime/:filename', function (req, reply) {
     const params: any = req.params;
     assert("filename" in params);
     const filename: any = params.filename;
@@ -35,14 +42,11 @@ export async function startServer (databaseFilename: string) {
     reply.sendFile(filename);
   })
 
-  fastify.get('/chart/:chartName/data', (request, reply) => {
-    const query: any = request.query;
-
-    const startTime = query.startTime ? Number(query.startTime) : undefined;
-    const endTime = query.endTime ? Number(query.endTime) : undefined;
-
+  fastify.get('/chart/:chartName/startTime/:startTime/endTime/:endTime/data', (request, reply) => {
     const params: any = request.params;
-    assert("chartName" in params)
+
+    const startTime = Number(params.startTime);
+    const endTime = Number(params.endTime);
     const chartName: any = params.chartName;
     assert(typeof chartName === "string")
     
