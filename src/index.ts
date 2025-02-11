@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { execSync } from 'node:child_process';
 import * as readline from 'node:readline';
 
@@ -65,6 +66,8 @@ async function main () {
         },
         chartHandler
       )
+      .strict()
+      .demandCommand(1, "You must provide a valid command")
       .parse();
 
 

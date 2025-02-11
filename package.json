@@ -5,6 +5,9 @@
   "scripts": {
     "build": "npx tsc"
   },
+  "bin": {
+    "control_chart": "./dist/index.js"
+  },
   "author": "",
   "license": "ISC",
   "description": "",
