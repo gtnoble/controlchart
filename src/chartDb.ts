@@ -33,6 +33,9 @@ export class ChartDb {
   getChartPointsQuery: Database.Statement;
   getCountsQuery: Database.Statement;
   getChartParametersQuery: Database.Statement;
+  getAvailableChartsQuery: Database.Statement;
+  getEarliestDataTimeQuery: Database.Statement;
+  getLatestDataTimeQuery: Database.Statement;
 
   constructor(databaseName: string) {
     this.database = new Database(databaseName);
@@ -46,12 +49,38 @@ export class ChartDb {
       value REAL,
       dataName STRING
     )`).run();
+    
+    this.getEarliestDataTimeQuery = this.database.prepare(
+      `
+      SELECT time 
+      FROM chart_data
+      WHERE dataName = :data_name
+      ORDER BY time
+      LIMIT 1;
+      `
+    );
+
+    this.getLatestDataTimeQuery = this.database.prepare(
+      `
+      SELECT time 
+      FROM chart_data
+      WHERE dataName = :data_name
+      ORDER BY time DESC
+      LIMIT 1;
+      `
+    );
+    
+    this.database.prepare(
+      `
+      CREATE INDEX IF NOT EXISTS chart_data_lookup ON chart_data (time, value, dataName);
+      `
+    ).run();
 
     this.insertObservationQuery = this.database.prepare(
       `INSERT INTO chart_data 
         (time, value, dataName) 
         VALUES (?, ?, ?);`);
-
+        
     this.database.prepare(
       `
       CREATE TABLE IF NOT EXISTS chart (
@@ -90,6 +119,10 @@ export class ChartDb {
         LIMIT 1;`
     )
     
+    this.getAvailableChartsQuery = this.database.prepare(
+      `SELECT DISTINCT chartName FROM chart ORDER BY chartName`
+    );
+    
     this.getChartPointsQuery = this.database.prepare(
       `
       SELECT time, value 
@@ -101,17 +134,17 @@ export class ChartDb {
     this.getCountsQuery = this.database.prepare(
       `
       WITH time_blocks AS (
-        SELECT 
-            ((time - :start_time) / :block_size) AS block_id,
-            MIN(time) AS time,
-            COUNT(*) AS value
-        FROM chart_data
-        WHERE time BETWEEN :start_time AND :end_time
-        AND dataName = ':dataName'
-        GROUP BY block_id
-        HAVING time + :block_size <= :end_time
-      )
-      SELECT time, value FROM time_blocks;
+    SELECT 
+        FLOOR((time - :start_time) / :block_size) AS block_id,
+        MIN(time) AS block_start,
+        COUNT(*) AS record_count
+    FROM chart_data
+    WHERE time BETWEEN :start_time AND :end_time
+    AND dataName = :data_name
+    GROUP BY block_id
+    HAVING block_start + :block_size <= :end_time
+)
+SELECT block_id, block_start, record_count FROM time_blocks;
       `
     )
 
@@ -120,6 +153,14 @@ export class ChartDb {
   addObservation(value: number, dataName: string) {
     const unixTime = Date.now();
     this.insertObservationQuery.run(unixTime, value, dataName);
+  }
+  
+  getLatestDataTime(dataName: string) {
+    return  (this.getLatestDataTimeQuery.get({data_name: dataName}) as {time: number}).time;
+  }
+
+  getEarliestDataTime(dataName: string) {
+    return (this.getEarliestDataTimeQuery.get({data_name: dataName}) as {time: number}).time;
   }
 
   initializeChart(
@@ -155,13 +196,26 @@ export class ChartDb {
   }
   
   getChartCounts(dataName: string, startTime: number, endTime: number, aggregationInterval: number) {
-    return this.getCountsQuery.all(
+    const blockCounts: any[] = this.getCountsQuery.all(
       {
-        dataName: dataName, 
+        data_name: dataName, 
         start_time: startTime, 
         end_time: endTime, 
         block_size: aggregationInterval
-      }) as ChartPointSchema[];
+      });
+    
+    const counts: ChartPointSchema[] = [];
+    
+    for (const blockCount of blockCounts) {
+      const index = blockCount.block_id;
+      counts[index] = {time: blockCount.block_start, value: blockCount.record_count}
+    }
+    for (let ii = 0; ii < counts.length; ii++) {
+      if (! counts[ii]) {
+        counts[ii] = {time: startTime + ii * aggregationInterval, value: 0};
+      }
+    }
+    return counts;
   }
   
   getControlLimits (chartParameters: ChartParametersSchema) {
@@ -191,18 +245,20 @@ export class ChartDb {
     
   }
   
-  getChart (chartName: string, startTime: number, endTime: number): Chart {
+  getChart (chartName: string, startTime?: number, endTime?: number): Chart {
     const parameters = this.getChartParameters(chartName);
     const limits = this.getControlLimits(parameters);
     let points: ChartPointSchema[] = [];
+    const dataStartTime = startTime ? startTime : this.getEarliestDataTime(parameters.dataName);
+    const dataEndTime = endTime ? endTime : this.getLatestDataTime(parameters.dataName);
     if (parameters.chartType === "individuals") {
-      points = this.getChartPoints(parameters.dataName, startTime, endTime);
+      points = this.getChartPoints(parameters.dataName, dataStartTime, dataEndTime);
     }
     else if (parameters.chartType === "counts") {
       points = this.getChartCounts(
         parameters.dataName, 
-        parameters.setupStartTime, 
-        parameters.setupEndTime,
+        dataStartTime, 
+        dataEndTime,
         parameters.aggregationInterval
       );
     }
@@ -224,6 +280,8 @@ export class ChartDb {
     };
   }
   
-  
+  getAvailableCharts () {
+    return this.getAvailableChartsQuery.all().map((row: any) => row.chartName);
+  }
 
 }

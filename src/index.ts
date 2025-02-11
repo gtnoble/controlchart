@@ -1,4 +1,5 @@
 import { execSync } from 'node:child_process';
+import * as readline from 'node:readline';
 
 import yargs from 'yargs';
 
@@ -11,7 +12,7 @@ async function main () {
 
   await yargs(process.argv.slice(2))
     .command(
-      "collect <command>", 
+      "collect [command]", 
       "collect data points", 
       (yargs) => {
         yargs
@@ -73,11 +74,19 @@ async function collectHandler (argv: any) {
   const command = argv.command;
   const database = new ChartDb(argv.d);
   
-  while (true) {
-    const commandOutput = execSync(command, {encoding: "utf-8"});
-    const value = Number(commandOutput);
-    database.addObservation(value, argv.name);
-    await new Promise(resolve => setTimeout(resolve, argv.interval));
+  if (command) {
+    while (true) {
+      const commandOutput = execSync(command, {encoding: "utf-8"});
+      const value = Number(commandOutput);
+      database.addObservation(value, argv.name);
+      await new Promise(resolve => setTimeout(resolve, argv.interval));
+    }
+  }
+  else {
+    const rl = readline.createInterface(process.stdin);
+    rl.on('line', (lineString) => database.addObservation(
+      Number(lineString.trim()), argv.name)
+    );
   }
   
 }

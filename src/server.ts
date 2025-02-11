@@ -17,6 +17,10 @@ export async function startServer (databaseFilename: string) {
       "frontend/dist"
     )
   })
+  
+  fastify.get('/availableCharts', function (req, reply) {
+    return database.getAvailableCharts();
+  })
 
   fastify.get('/chart/:chartName', function (req, reply) {
     reply.sendFile("chart.html");
@@ -34,17 +38,15 @@ export async function startServer (databaseFilename: string) {
   fastify.get('/chart/:chartName/data', (request, reply) => {
     const query: any = request.query;
 
-    const startTime: any = query.startTime || "0";
-    assert(typeof startTime === "string")
-    const endTime: any = query.endTime || Date.now().toString();
-    assert(typeof endTime === "string")
+    const startTime = query.startTime ? Number(query.startTime) : undefined;
+    const endTime = query.endTime ? Number(query.endTime) : undefined;
 
     const params: any = request.params;
     assert("chartName" in params)
     const chartName: any = params.chartName;
     assert(typeof chartName === "string")
     
-    return database.getChart(chartName, Number(startTime), Number(endTime));
+    return database.getChart(chartName, startTime, endTime);
 
   });
   

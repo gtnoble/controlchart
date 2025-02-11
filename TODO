@@ -1,3 +1,6 @@
-Finish chart page route on server
-Test CLI consumer
+Add log chart transformation chart config param
+Make plot change menu choice reload the page with different query params to minimize state
+Zoomable plots
+Setup interval selection via UI
 Test CLI initializer
+Add chart type validation

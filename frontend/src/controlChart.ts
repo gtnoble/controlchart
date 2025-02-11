@@ -1,20 +1,29 @@
+import 'daterangepicker';
+import 'bootstrap';
+
 import axios from 'axios';
 import Chart, {
   ChartDataset,
   Point,
 } from 'chart.js/auto';
+import jQuery from 'jquery';
 
 const DATA_URL = location.pathname + "/data";
+const AVAILABLE_CHARTS_URL = "/availableCharts";
 
 const CONTROL_LIMIT_COLOR = "#FF0000";
 const MEAN_COLOR = "#00FF00";
 const OBSERVATION_COLOR = "#000000";
 
+const setColors = (color: string) => ({
+  borderColor: color,
+  backgroundColor: color,
+  pointBorderColor: color,
+  pointBackgroundColor: color
+})
+
 const CONTROL_LIMIT_STYLE = {
-  borderColor: CONTROL_LIMIT_COLOR,
-  backgroundColor: CONTROL_LIMIT_COLOR,
-  pointBorderColor: CONTROL_LIMIT_COLOR,
-  pointBackgroundColor: CONTROL_LIMIT_COLOR,
+  ...setColors(CONTROL_LIMIT_COLOR),
   tension: 0,
   spanGaps: true,
   borderDash: [2,2],
@@ -22,23 +31,23 @@ const CONTROL_LIMIT_STYLE = {
 };
 
 const MEAN_STYLE = {
-  borderColor: MEAN_COLOR,
-  backgroundColor: MEAN_COLOR,
-  pointBorderColor: MEAN_COLOR,
-  pointBackgroundColor: MEAN_COLOR,
+  ...setColors(MEAN_COLOR),
   tension: 0,
   spanGaps: true,
   pointStyle: false
 };
 
-const OBSERVATION_STYLE = {
-  borderColor: OBSERVATION_COLOR,
-  backgroundColor: OBSERVATION_COLOR,
-  pointBorderColor: OBSERVATION_COLOR,
-  pointBackgroundColor: OBSERVATION_COLOR,
+const MONITORED_STYLE = {
+  ...setColors(OBSERVATION_COLOR),
   tension: 0,
-  pointStyle: false
+  pointStyle: false,
+  spanGaps: false
 };
+
+const SETUP_STYLE = {
+  ...MONITORED_STYLE,
+  borderDash: [2, 2]
+}
 
 interface ChartData {
   chartName: string;
@@ -53,43 +62,32 @@ function makeEdgePoints(value: number, observations: {x: number, y:number}[]) {
   return points;
 }
 
-(async function () {
+async function updateChartDropdown () {
+  const chartDropdownElements = document.getElementById('select-chart-items');
+  if (! chartDropdownElements) {
+    throw new Error("Unable to find chart dropdown elements DOM element");
+  }
 
-  const chartData: ChartData = (await axios.get(DATA_URL)).data;
-  
-  const observations: Point[] = chartData.observations.map((observation) => ({x: observation.time, y: observation.value}));
-  const labels: string[] = observations.map((observation) => (new Date(observation.x)).toLocaleString());
-  const upperControlLimits = makeEdgePoints(chartData.upperControlLimit, observations);
-  const lowerControlLimits  = makeEdgePoints(chartData.lowerControlLimit, observations);
-  const mean = makeEdgePoints(chartData.mean, observations);
-  
-  const dataSets: ChartDataset[] =  [
-    {
-      label: chartData.chartName,
-      order: 0, 
-      data: observations,
-      ...OBSERVATION_STYLE
-    },
-    {
-      label: "Mean",
-      order: 1, 
-      data: mean,
-      ...MEAN_STYLE
-    },
-    {
-      label: "Upper Control Limit",
-      order: 2, 
-      data: upperControlLimits,
-      ...CONTROL_LIMIT_STYLE
-    },
-    {
-      label: "Lower Control Limit",
-      order: 3, 
-      data: lowerControlLimits,
-      ...CONTROL_LIMIT_STYLE
-    }
-  ];
-  
+  const availableCharts: string[] = (await axios.get(AVAILABLE_CHARTS_URL)).data;
+  const newChartDropdownElements = availableCharts.map((chartName: string) => {
+    const listItem = document.createElement('li');
+    const chartLink = document.createElement('a');
+    chartLink.href = `/chart/${chartName}`;
+    chartLink.className = "dropdown-item";
+    chartLink.innerText = chartName;
+    listItem.appendChild(chartLink);
+    return listItem;
+  })
+  chartDropdownElements.replaceChildren(...newChartDropdownElements);
+}
+
+const chartSelectDropdown = document.getElementById('chart-select-dropdown');
+if (! chartSelectDropdown) {
+  throw new Error ("unable to locate chart select dropdown menu");
+}
+chartSelectDropdown.addEventListener('show.bs.dropdown', updateChartDropdown);
+
+(async function () {
   const chartElement = document.getElementById('control_chart');
   if (! chartElement) {
     throw new Error(`Could not find element ${chartElement} to attach control chart plot`);
@@ -97,12 +95,82 @@ function makeEdgePoints(value: number, observations: {x: number, y:number}[]) {
   if (! (chartElement instanceof HTMLCanvasElement)) {
     throw new Error(`${chartElement} must refer to a canvas tag`);
   }
+  
+  const chart = new Chart(
+      chartElement,
+      {
+        type: 'line',
+        data: await getData()
+      }
+    )
 
-  new Chart(
-    chartElement,
-    {
-      type: 'line',
-      data: {datasets: dataSets, labels: labels}
-    }
-  )
+  jQuery(() => {
+    jQuery("#chart-range").daterangepicker(
+      {
+        timePicker: true
+      },
+      async (start, stop) => {
+        chart.data = await getData(start.toDate(), stop.toDate());
+        chart.update();
+      }
+    )
+  })
+
+
+  async function getData (startDate: Date = new Date(0), endDate: Date = new Date()) {
+
+    const chartData: ChartData = (await axios.get(
+      DATA_URL, 
+      {params: {startTime: startDate.valueOf(), endtime: endDate.valueOf()}})
+    ).data;
+    
+    const observations: Point[] = chartData.observations.map(
+      (observation) => ({x: observation.time, y: observation.value}));
+    const setupPoints: Point[] = chartData.observations.map(
+      (observation) => ({x: observation.time, y: observation.isSetup ? observation.value : null})) as Point[];
+    const monitoredPoints: Point[] = chartData.observations.map(
+      (observation) => ({x: observation.time, y: ! observation.isSetup ? observation.value : null})) as Point[];
+
+    const labels: string[] = observations.map((observation) => (new Date(observation.x)).toLocaleString());
+    const upperControlLimits = makeEdgePoints(chartData.upperControlLimit, observations);
+    const lowerControlLimits  = makeEdgePoints(chartData.lowerControlLimit, observations);
+    const mean = makeEdgePoints(chartData.mean, observations);
+    
+    const dataSets: ChartDataset[] =  [
+      {
+        label: "Monitored Observations",
+        order: 0, 
+        data: monitoredPoints,
+        ...MONITORED_STYLE
+      },
+      {
+        label: "Setup Observations",
+        order: 1, 
+        data: setupPoints,
+        ...SETUP_STYLE
+      },
+      {
+        label: "Mean",
+        order: 2, 
+        data: mean,
+        ...MEAN_STYLE
+      },
+      {
+        label: "Upper Control Limit",
+        order: 3, 
+        data: upperControlLimits,
+        ...CONTROL_LIMIT_STYLE
+      },
+      {
+        label: "Lower Control Limit",
+        order: 4, 
+        data: lowerControlLimits,
+        ...CONTROL_LIMIT_STYLE
+      }
+    ];
+    
+
+    return {datasets: dataSets, labels: labels}
+  }
+
 })()
