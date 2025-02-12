@@ -6,17 +6,17 @@ export type ChartType = "individuals" | "counts";
 
 export interface Chart {
   type: ChartType;
-  upperControlLimit: number;
-  lowerControlLimit: number;
-  mean: number;
+  controlLimits?: {
+    mean: number;
+    upperControlLimit: number;
+    lowerControlLimit: number;
+  }
   observations: {value: number, time: number, isSetup: boolean}[];
 }
 
 interface ChartParametersSchema {
   chartType: string;
   dataName: string;
-  setupStartTime: number;
-  setupEndTime: number;
   aggregationInterval: number;
 }
 
@@ -24,12 +24,20 @@ interface ChartPointSchema {
   time: number;
   value: number;
 }
+
+interface ChartSetupSchema {
+  setupStartTime: number, 
+  setupEndTime: number, 
+  creationTime: number
+}
   
 export class ChartDb {
 
   database: Database.Database;
   insertObservationQuery: Database.Statement;
   initializeChartQuery: Database.Statement;
+  insertSetupQuery: Database.Statement;
+  getSetupQuery: Database.Statement;
   getChartPointsQuery: Database.Statement;
   getCountsQuery: Database.Statement;
   getChartParametersQuery: Database.Statement;
@@ -45,6 +53,7 @@ export class ChartDb {
     this.database.prepare(
       `
     CREATE TABLE IF NOT EXISTS chart_data (
+      id INTEGER PRIMARY KEY ASC AUTOINCREMENT,
       time INTEGER,
       value REAL,
       dataName STRING
@@ -87,10 +96,46 @@ export class ChartDb {
         chartName STRING PRIMARY KEY,
         chartType STRING,
         dataName STRING,
-        setupStartTime INTEGER,
-        setupEndTime INTEGER,
         aggregationInterval INTEGER
       );`).run()
+      
+    this.database.prepare(
+      `
+      CREATE TABLE IF NOT EXISTS setup (
+        id INTEGER PRIMARY KEY ASC AUTOINCREMENT,
+        chartName STRING REFERENCES chart (chartName),
+        setupStartTime INTEGER,
+        setupEndTime INTEGER,
+        creationTime INTEGER
+      )
+      `
+    ).run()
+    
+    this.insertSetupQuery = this.database.prepare(
+      `
+      INSERT INTO setup (
+        chartName,
+        setupStartTime,
+        setupEndTime,
+        creationTime
+      )
+      VALUES (
+        :chartName, 
+        :setupStartTime, 
+        :setupEndTime, 
+        :creationTime
+      );
+      `
+    )
+    
+    this.getSetupQuery = this.database.prepare(
+      `
+      SELECT setupStartTime, setupEndTime, creationTime FROM setup
+      WHERE chartName = :chartName
+      ORDER BY id
+      LIMIT 1;
+      `
+    )
 
     this.initializeChartQuery = this.database.prepare(
       `
@@ -98,22 +143,18 @@ export class ChartDb {
       chartName,
       chartType,
       dataName,
-      setupStartTime,
-      setupEndTime,
       aggregationInterval
     )
     VALUES (
       :chartName, 
       :chartType, 
       :dataName, 
-      :setupStartTime, 
-      :setupEndTime, 
       :aggregationInterval
     );`);
     
     this.getChartParametersQuery = this.database.prepare(
       `SELECT 
-        dataName, chartType, setupStartTime, setupEndTime, aggregationInterval 
+        dataName, chartType, aggregationInterval 
         FROM chart 
         WHERE chartName = ? 
         LIMIT 1;`
@@ -171,8 +212,6 @@ SELECT block_id, block_start, record_count FROM time_blocks;
     chartName: string,
     dataName: string,
     chartType: ChartType,
-    setupStartTime: Date,
-    setupEndTime: Date,
     aggregationInterval: number
   ) {
 
@@ -181,10 +220,29 @@ SELECT block_id, block_start, record_count FROM time_blocks;
         chartName: chartName,
         chartType: chartType,
         dataName: dataName,
-        setupStartTime: setupStartTime.valueOf(),
-        setupEndTime: setupEndTime.valueOf(),
         aggregationInterval: aggregationInterval
       });
+  }
+  
+  addChartSetup(
+    chartName: string,
+    setupStartTime: Date,
+    setupEndTime: Date
+  ) {
+    this.insertSetupQuery.run(
+      {
+        chartName: chartName,
+        setupStartTime: setupStartTime.valueOf(),
+        setupEndTime: setupEndTime.valueOf(),
+        creationTime: (new Date()).valueOf()
+      }
+    )
+  }
+  
+  getChartSetup(
+    chartName: string
+  ) {
+    return this.getSetupQuery.get({chartName: chartName}) as ChartSetupSchema | undefined;
   }
   
   getChartParameters(chartName: string): ChartParametersSchema {
@@ -222,13 +280,16 @@ SELECT block_id, block_start, record_count FROM time_blocks;
     return counts;
   }
   
-  getControlLimits (chartParameters: ChartParametersSchema) {
+  getControlLimits (
+    chartParameters: ChartParametersSchema, 
+    chartSetup: ChartSetupSchema
+  ) {
     
     if (chartParameters.chartType === "individuals") {
       const points = this.getChartPoints(
         chartParameters.dataName, 
-        chartParameters.setupStartTime, 
-        chartParameters.setupEndTime
+        chartSetup.setupStartTime, 
+        chartSetup.setupEndTime
       );
       const values = points.map((point) => point.value)
       return stats.individualsChartSetupParams(values);
@@ -236,8 +297,8 @@ SELECT block_id, block_start, record_count FROM time_blocks;
     else if (chartParameters.chartType === "counts") {
       const counts = this.getChartCounts(
         chartParameters.dataName,
-        chartParameters.setupStartTime,
-        chartParameters.setupEndTime,
+        chartSetup.setupStartTime,
+        chartSetup.setupEndTime,
         chartParameters.aggregationInterval
       );
       const values = counts.map((count) => count.value);
@@ -251,7 +312,8 @@ SELECT block_id, block_start, record_count FROM time_blocks;
   
   getChart (chartName: string, startTime?: number, endTime?: number): Chart {
     const parameters = this.getChartParameters(chartName);
-    const limits = this.getControlLimits(parameters);
+    const setup = this.getChartSetup(chartName);
+    const limits = setup && this.getControlLimits(parameters, setup);
     let points: ChartPointSchema[] = [];
     const dataStartTime = startTime ? startTime : this.getEarliestDataTime(parameters.dataName);
     const dataEndTime = endTime ? endTime : this.getLatestDataTime(parameters.dataName);
@@ -273,13 +335,13 @@ SELECT block_id, block_start, record_count FROM time_blocks;
     const observations = points.map((point) => {
       return {
         ...point, 
-        isSetup: point.time >= parameters.setupStartTime && point.time <= parameters.setupEndTime
+        isSetup: setup !== undefined && point.time >= setup.setupStartTime && point.time <= setup.setupEndTime
       }
     })
     
     return {
       type: parameters.chartType,
-      ...limits,
+      controlLimits: limits,
       observations: observations
     };
   }

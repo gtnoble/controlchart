@@ -2,7 +2,8 @@ Add log chart transformation chart config param
 Switching charts should preserve the time window
 Provide "view all data" link
 Zoomable plots
-Setup interval selection via UI
-Test CLI initializer
 Add chart type validation
-Allow for the initialization and viewing of a chart without a setup region
+add graceful handling of empty charts table
+add graph view randomness Test
+add graph view distribution test
+add point annotations

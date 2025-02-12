@@ -35,8 +35,8 @@ async function main () {
             type: {type: "string", alias: "t", default: "individuals"},
             chart_name: {type: "string", alias: "c", required: true},
             data_name: {type: "string", alias: "n", required: true},
-            setup_start_time: {type: "string", alias: "s", required: true},
-            setup_end_time: {type: "string", alias: "e", required: true},
+            setup_start_time: {type: "string", alias: "s"},
+            setup_end_time: {type: "string", alias: "e"},
             aggregation_interval: {type: "number", alias: "g", default: ONE_DAY_MS}
           }
         )
@@ -101,10 +101,19 @@ async function initHandler (argv: any) {
     argv.chart_name,
     argv.data_name,
     argv.type,
-    new Date(argv.setup_start_time),
-    new Date(argv.setup_end_time),
     argv.aggregation_interval
   );
+  
+  if (argv.setup_start_time && argv.setup_end_time) {
+    database.addChartSetup(
+      argv.chart_name, 
+      new Date(argv.start_time),
+      new Date(argv.end_time)
+    )
+  }
+  else if (argv.setup_start_time || argv.setup_end_time) {
+    throw new Error ("If you are specifying a setup interval, you must specify both the start and end times");
+  }
 }
 
 async function server (argv: any) {

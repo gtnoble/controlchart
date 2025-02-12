@@ -3,6 +3,7 @@ import Fastify from 'fastify';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+import fastifyForms from '@fastify/formbody';
 import fastifyStatic from '@fastify/static';
 
 import { ChartDb } from './chartDb.js';
@@ -10,6 +11,8 @@ import { ChartDb } from './chartDb.js';
 export async function startServer (databaseFilename: string) {
   const database = new ChartDb(databaseFilename);
   const fastify = Fastify({logger: true});
+  
+  fastify.register(fastifyForms);
 
   fastify.register(fastifyStatic, {
     root: path.join(
@@ -26,10 +29,10 @@ export async function startServer (databaseFilename: string) {
     const params: any = req.params;
     const chartParams = database.getChartParameters(params.chartName);
     const dataLimits = database.getChartDataLimits(chartParams);
-    reply.redirect(`/chart/${params.chartName}/startTime/${dataLimits[0]}/endTime/${dataLimits[1]}`)
+    reply.redirect(`/chart/${params.chartName}/startTime/${dataLimits[0]}/endTime/${dataLimits[1]}/chart`)
   })
   
-  fastify.get('/chart/:chartName/startTime/:startTime/endTime/:endTime', function (req, reply) {
+  fastify.get('/chart/:chartName/startTime/:startTime/endTime/:endTime/chart', function (req, reply) {
     reply.sendFile("chart.html")
   })
 
@@ -53,6 +56,18 @@ export async function startServer (databaseFilename: string) {
     return database.getChart(chartName, startTime, endTime);
 
   });
+
+  fastify.post('/chart/:chartName/startTime/:startTime/endTime/:endTime/setSetup', (request, reply) => {
+    const params: any = request.params;
+
+    const startTime = Number(params.startTime);
+    const endTime = Number(params.endTime);
+    const chartName: any = params.chartName;
+    assert(typeof chartName === "string")
+
+    database.addChartSetup(chartName, new Date(startTime), new Date(endTime));
+    reply.redirect("./chart");
+  })
   
   await fastify.listen({port: 3000});
 }

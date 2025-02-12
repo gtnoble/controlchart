@@ -8,7 +8,7 @@ import Chart, {
 } from 'chart.js/auto';
 import jQuery from 'jquery';
 
-const DATA_URL = location.pathname + "/data";
+const DATA_URL = "./data";
 const AVAILABLE_CHARTS_URL = "/availableCharts";
 
 const CONTROL_LIMIT_COLOR = "#FF0000";
@@ -49,12 +49,15 @@ const SETUP_STYLE = {
   borderDash: [2, 2]
 }
 
-interface ChartData {
-  chartName: string;
-  upperControlLimit: number;
-  lowerControlLimit: number;
-  mean: number;
-  observations: {time: number, value: number, isSetup: boolean}[];
+export type ChartType = "individuals" | "counts";
+export interface ChartData {
+  type: ChartType;
+  controlLimits?: {
+    mean: number;
+    upperControlLimit: number;
+    lowerControlLimit: number;
+  }
+  observations: {value: number, time: number, isSetup: boolean}[];
 }
 
 function makeEdgePoints(value: number, observations: {x: number, y:number}[]) {
@@ -96,7 +99,6 @@ chartSelectDropdown.addEventListener('show.bs.dropdown', updateChartDropdown);
     throw new Error(`${chartElement} must refer to a canvas tag`);
   }
   
-  const queryOptions = new URLSearchParams(window.location.search);
   const chart = new Chart(
       chartElement,
       {
@@ -122,7 +124,7 @@ chartSelectDropdown.addEventListener('show.bs.dropdown', updateChartDropdown);
         const startTime = start.toDate().valueOf().toString();
         const endTime = stop.toDate().valueOf().toString();
         
-        const updatedPlotURL = `/chart/${chartName}/startTime/${startTime}/endTime/${endTime}`
+        const updatedPlotURL = `/chart/${chartName}/startTime/${startTime}/endTime/${endTime}/chart`
 
         window.location.replace(updatedPlotURL);
       }
@@ -144,9 +146,34 @@ chartSelectDropdown.addEventListener('show.bs.dropdown', updateChartDropdown);
       (observation) => ({x: observation.time, y: ! observation.isSetup ? observation.value : null})) as Point[];
 
     const labels: string[] = observations.map((observation) => (new Date(observation.x)).toLocaleString());
-    const upperControlLimits = makeEdgePoints(chartData.upperControlLimit, observations);
-    const lowerControlLimits  = makeEdgePoints(chartData.lowerControlLimit, observations);
-    const mean = makeEdgePoints(chartData.mean, observations);
+
+    let controlLimitsDatasets: ChartDataset[] = [];
+    if (chartData.controlLimits) {
+      const upperControlLimits = makeEdgePoints(chartData.controlLimits.upperControlLimit, observations);
+      const lowerControlLimits  = makeEdgePoints(chartData.controlLimits.lowerControlLimit, observations);
+      const mean = makeEdgePoints(chartData.controlLimits.mean, observations);
+      controlLimitsDatasets = [
+        {
+          label: "Mean",
+          order: 2, 
+          data: mean,
+          ...MEAN_STYLE
+        },
+        {
+          label: "Upper Control Limit",
+          order: 3, 
+          data: upperControlLimits,
+          ...CONTROL_LIMIT_STYLE
+        },
+        {
+          label: "Lower Control Limit",
+          order: 4, 
+          data: lowerControlLimits,
+          ...CONTROL_LIMIT_STYLE
+        }
+      ]
+
+    }
     
     const dataSets: ChartDataset[] =  [
       {
@@ -161,24 +188,7 @@ chartSelectDropdown.addEventListener('show.bs.dropdown', updateChartDropdown);
         data: setupPoints,
         ...SETUP_STYLE
       },
-      {
-        label: "Mean",
-        order: 2, 
-        data: mean,
-        ...MEAN_STYLE
-      },
-      {
-        label: "Upper Control Limit",
-        order: 3, 
-        data: upperControlLimits,
-        ...CONTROL_LIMIT_STYLE
-      },
-      {
-        label: "Lower Control Limit",
-        order: 4, 
-        data: lowerControlLimits,
-        ...CONTROL_LIMIT_STYLE
-      }
+      ...controlLimitsDatasets
     ];
     
 
