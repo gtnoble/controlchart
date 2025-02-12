@@ -132,7 +132,7 @@ export class ChartDb {
       `
       SELECT setupStartTime, setupEndTime, creationTime FROM setup
       WHERE chartName = :chartName
-      ORDER BY id
+      ORDER BY id DESC
       LIMIT 1;
       `
     )

@@ -9,3 +9,5 @@ add graph view distribution test
 add point annotations
 add list dataName cli option
 display view point count in UI
+display chart name on page
+display standard deviation on page
