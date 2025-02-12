@@ -79,7 +79,16 @@ async function collectHandler (argv: any) {
   
   if (command) {
     while (true) {
-      const commandOutput = execSync(command, {encoding: "utf-8"});
+      let commandOutput: string;
+      try {
+        commandOutput = execSync(command, {encoding: "utf-8"});
+      }
+      catch (e) {
+        console.error(`Command execution failed, ignoring: details: ${e}`)
+        await new Promise(resolve => setTimeout(resolve, argv.interval));
+        continue;
+      }
+      
       const value = Number(commandOutput);
       database.addObservation(value, argv.name);
       await new Promise(resolve => setTimeout(resolve, argv.interval));
