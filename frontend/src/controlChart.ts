@@ -6,7 +6,10 @@ import Chart, {
   ChartDataset,
   Point,
 } from 'chart.js/auto';
+import zoomPlugin from 'chartjs-plugin-zoom';
 import jQuery from 'jquery';
+
+Chart.register(zoomPlugin);
 
 const DATA_URL = "./data";
 const AVAILABLE_CHARTS_URL = "/availableCharts";
@@ -101,11 +104,48 @@ chartSelectDropdown.addEventListener('show.bs.dropdown', updateChartDropdown);
   
   const chart = new Chart(
       chartElement,
-      {
-        type: 'line',
-        data: await getData()
-      }
+    {
+      type: 'line',
+      data: await getData(),
+      options: {
+        responsive: true,
+        plugins: {
+          zoom: {
+            pan: {
+              enabled: true,
+              mode: 'xy',
+            },
+            zoom: {
+              wheel: {
+                enabled: true
+              },
+              pinch: {
+                enabled: true
+              },
+              mode: 'xy'
+            }
+          }
+        },
+        scales: {
+          y: {type: 'linear'}
+        }
+      },
+    }
     )
+    
+  const toggleLogButton = document.getElementById('toggleLog');
+  if (! toggleLogButton) {
+    throw new Error("missing log toggle button!");
+  }
+  toggleLogButton.addEventListener('click', function () {
+    if (chart.options.scales?.y?.type !== 'logarithmic') {
+      chart.options.scales = {y: {type: 'logarithmic'}};
+    }
+    else {
+      chart.options.scales = {y: {type: 'linear'}};
+    }
+    chart.update();
+  })
 
   const currentURLComponents = new URL(window.location.href).pathname.split('/');
   const chartName = currentURLComponents[2];

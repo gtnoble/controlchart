@@ -1,8 +1,24 @@
+import assert from 'node:assert/strict';
+
 import Database from 'better-sqlite3';
 
 import * as stats from './stats.js';
 
 export type ChartType = "individuals" | "counts";
+
+export type TransformationName = "log" | undefined;
+export type TransformationType = (value: number) => number;
+export type TransformationPair = {forward: TransformationType, reverse: TransformationType};
+
+const LOG_TRANSFORMATION_PAIR: TransformationPair = {
+  forward: (value) => Math.log(value),
+  reverse: (value) => Math.exp(value)
+};
+
+const NULL_TRANSFORMATION: TransformationPair = {
+  forward: (value) => value,
+  reverse: (value) => value
+};
 
 export interface Chart {
   type: ChartType;
@@ -44,6 +60,8 @@ export class ChartDb {
   getAvailableChartsQuery: Database.Statement;
   getEarliestDataTimeQuery: Database.Statement;
   getLatestDataTimeQuery: Database.Statement;
+  setTransformationQuery: Database.Statement;
+  getTransformationQuery: Database.Statement;
 
   constructor(databaseName: string) {
     this.database = new Database(databaseName);
@@ -110,6 +128,37 @@ export class ChartDb {
       )
       `
     ).run()
+    
+    this.database.prepare(
+      `
+      CREATE TABLE IF NOT EXISTS transformations (
+        chartName STRING REFERENCES chart (chartName),
+        transformation STRING
+      );
+      `
+    ).run();
+    
+    this.setTransformationQuery = this.database.prepare(
+      `
+      INSERT OR REPLACE INTO transformations (
+        chartName,
+        transformation
+      )
+      VALUES (
+        :chartName,
+        :transformation
+      );
+      `
+    )
+    
+    this.getTransformationQuery = this.database.prepare(
+      `
+      SELECT transformation 
+      FROM transformations
+      WHERE chartName = :chartName
+      LIMIT 1;
+      `
+    )
     
     this.insertSetupQuery = this.database.prepare(
       `
@@ -239,6 +288,32 @@ SELECT block_id, block_start, record_count FROM time_blocks;
     )
   }
   
+  setTransformation(
+    chartName: string,
+    transformation: TransformationName
+  ) {
+    this.setTransformationQuery.run(
+      {chartName: chartName, transformation: transformation}
+    );
+  }
+  
+  getTransformation(
+    chartName: string
+  ): TransformationPair {
+    const transformationRow: any = this.getTransformationQuery.get(
+      {chartName: chartName}
+    )
+    
+    const transformation = transformationRow?.transformation;
+    if (! transformation ) {
+      return NULL_TRANSFORMATION;
+    }
+    else {
+      assert( transformation === "log");
+      return LOG_TRANSFORMATION_PAIR
+    }
+  }
+  
   getChartSetup(
     chartName: string
   ) {
@@ -282,8 +357,9 @@ SELECT block_id, block_start, record_count FROM time_blocks;
   
   getControlLimits (
     chartParameters: ChartParametersSchema, 
-    chartSetup: ChartSetupSchema
-  ) {
+    chartSetup: ChartSetupSchema,
+    chartTransformation: TransformationPair = NULL_TRANSFORMATION
+  ): stats.ControlLimitsType {
     
     if (chartParameters.chartType === "individuals") {
       const points = this.getChartPoints(
@@ -291,8 +367,13 @@ SELECT block_id, block_start, record_count FROM time_blocks;
         chartSetup.setupStartTime, 
         chartSetup.setupEndTime
       );
-      const values = points.map((point) => point.value)
-      return stats.individualsChartSetupParams(values);
+      const transformedValues = points.map((point) => chartTransformation.forward(point.value))
+      const transformedStats = stats.individualsChartSetupParams(transformedValues);
+      return {
+        mean: chartTransformation.reverse(transformedStats.mean),
+        upperControlLimit: chartTransformation.reverse(transformedStats.upperControlLimit),
+        lowerControlLimit: chartTransformation.reverse(transformedStats.lowerControlLimit)
+      };
     }
     else if (chartParameters.chartType === "counts") {
       const counts = this.getChartCounts(
@@ -313,7 +394,8 @@ SELECT block_id, block_start, record_count FROM time_blocks;
   getChart (chartName: string, startTime?: number, endTime?: number): Chart {
     const parameters = this.getChartParameters(chartName);
     const setup = this.getChartSetup(chartName);
-    const limits = setup && this.getControlLimits(parameters, setup);
+    const transformations = this.getTransformation(chartName);
+    const limits = setup && this.getControlLimits(parameters, setup, transformations);
     let points: ChartPointSchema[] = [];
     const dataStartTime = startTime ? startTime : this.getEarliestDataTime(parameters.dataName);
     const dataEndTime = endTime ? endTime : this.getLatestDataTime(parameters.dataName);

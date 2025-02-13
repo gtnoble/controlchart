@@ -66,11 +66,43 @@ async function main () {
         },
         chartHandler
       )
+      .command(
+        "transform",
+        "set the data transformation for the control chart",
+        (yargs) => {
+          yargs.options({
+            database: {type: "string", alias: "d", required: true},
+            chart_name: {type: "string", alias: "c", required: true},
+            transformation: {type: "string", alias: "t", default: "none"}
+          })
+        },
+        transformHandler
+      )
       .strict()
       .demandCommand(1, "You must provide a valid command")
       .parse();
 
 
+}
+
+function transformHandler (argv: any) {
+  const database = new ChartDb(argv.d);
+  
+  const transformationName = argv.transformation;
+  
+  validateChartName(argv.chart_name, database);
+  
+  if (transformationName === "none") {
+    database.setTransformation(argv.chart_name, undefined);
+  }
+  else if (transformationName === "log") {
+    database.setTransformation(argv.chart_name, "log");
+  }
+  else {
+    throw new Error(
+      `Transformation name must be either "none" or "log": given: ${transformationName}`
+    )
+  }
 }
 
 async function collectHandler (argv: any) {
@@ -132,6 +164,8 @@ async function server (argv: any) {
 async function chartHandler (argv: any) {
   const database = new ChartDb(argv.d);
   
+  validateChartName(argv.chart_name, database);
+
   console.log(
     JSON.stringify(
       database.getChart(
@@ -141,6 +175,13 @@ async function chartHandler (argv: any) {
       )
     )
   )
+}
+
+function validateChartName (chartName: string, database: ChartDb) {
+  const availableChartNames = database.getAvailableCharts();
+  if (! availableChartNames.includes(chartName)) {
+    throw new Error(`Chart name ${chartName} is not a valid chart name!`);
+  }
 }
 
 main();
