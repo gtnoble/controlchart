@@ -1,5 +1,6 @@
 Switching charts should preserve the time window
 Provide "view all data" link
+Provide "view setup" link
 Have setup interval creation match zoom level
 Have calendar match zoom level
 add graceful handling of empty charts table
