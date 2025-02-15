@@ -102,20 +102,37 @@ interface HistogramData {
   data: number[];
 }
 
-function createHistogramData(observations: Point[], binCount = 20): HistogramData {
+function createHistogramData(observations: Point[], binCount: number | 'auto' = 'auto'): HistogramData {
     const values = observations.map(o => o.y).filter(y => y !== null) as number[];
+    if (values.length < 2) return { labels: [], data: [] };
+    
+    // Calculate optimal bins using Freedman-Diaconis rule
+    let calculatedBinCount: number;
+    if (binCount === 'auto') {
+        const sorted = values.slice().sort((a, b) => a - b);
+        const q1 = sorted[Math.floor(sorted.length * 0.25)];
+        const q3 = sorted[Math.floor(sorted.length * 0.75)];
+        const iqr = q3 - q1;
+        const binWidth = 2 * iqr / Math.pow(values.length, 1/3);
+        const minVal = Math.min(...values);
+        const maxVal = Math.max(...values);
+        calculatedBinCount = Math.ceil((maxVal - minVal) / binWidth) || 1;
+    } else {
+        calculatedBinCount = binCount;
+    }
+
     const min = Math.min(...values);
     const max = Math.max(...values);
-    const binSize = (max - min) / binCount;
+    const binSize = (max - min) / calculatedBinCount;
     
-    const bins = Array(binCount).fill(0);
+    const bins = Array(calculatedBinCount).fill(0);
     values.forEach(value => {
       const binIndex = Math.floor((value - min) / binSize);
-      bins[Math.min(binIndex, binCount-1)]++;
+      bins[Math.min(binIndex, calculatedBinCount-1)]++;
     });
     
     return {
-      labels: Array.from({length: binCount}, (_, i) => 
+      labels: Array.from({length: calculatedBinCount}, (_, i) => 
         `${(min + i*binSize).toFixed(1)}-${(min + (i+1)*binSize).toFixed(1)}`),
       data: bins
     };
@@ -255,7 +272,7 @@ function createHistogramData(observations: Point[], binCount = 20): HistogramDat
     });
   });
 
-  async function getData (chartType: 'control' | 'histogram', startDate?: string, endDate?: string): Promise<{datasets: ChartDataset[], labels: string[]}> {
+  async function getData (chartType: 'control' | 'histogram', startDate?: string, endDate?: string, binCount?: number | 'auto'): Promise<{datasets: ChartDataset[], labels: string[]}> {
 
     const chartData: ChartData = (await axios.get(
       DATA_URL)
