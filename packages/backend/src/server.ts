@@ -129,5 +129,15 @@ export async function startServer(databaseFilename: string) {
 
   fastify.post('/dataPoint/:dataPointId/annotate', addAnnotationHandler);
 
+  fastify.get('/dataPoint/:dataPointId/annotation', async (request, reply) => {
+    try {
+      const params = request.params as ChartParams;
+      const annotation = await database.getAnnotation(Number(params.dataPointId));
+      reply.send({ annotation });
+    } catch (error) {
+      reply.status(500).send(error instanceof Error ? error.message : 'Unknown error');
+    }
+  });
+
   await fastify.listen({ port: 3000 });
 }

@@ -6,14 +6,12 @@ import Chart, {
   ChartDataset,
   Point,
 } from 'chart.js/auto';
-import ChartDataLabels from 'chartjs-plugin-datalabels';
 import zoomPlugin from 'chartjs-plugin-zoom';
 import jQuery from 'jquery';
 
 import type { ChartData } from '../../backend/src/types/chart';
 
 Chart.register(zoomPlugin);
-Chart.register(ChartDataLabels);
 
 const DATA_URL = "./data";
 const AVAILABLE_CHARTS_URL = "/availableCharts";
@@ -129,6 +127,10 @@ function createHistogramData(observations: Point[], binCount = 20): HistogramDat
       type: 'line',
       data: await getData(currentChartType),
       options: {
+        interaction: {
+          mode: 'nearest',
+          intersect: true
+        },
         onClick: (event, elements) => {
           if (elements.length > 0) {
             const { datasetIndex, index } = elements[0];
@@ -161,8 +163,16 @@ function createHistogramData(observations: Point[], binCount = 20): HistogramDat
               },
               mode: 'xy'
             }
+          },
+          tooltip: {
+            callbacks: {
+              afterBody: (context) => {
+                const point = context[0].raw as any;
+                return point?.annotations ? [`Annotation: ${point.annotations}`] : [];
+              }
+            }
           }
-        }
+        },
       },
     }
     )
@@ -249,17 +259,20 @@ function createHistogramData(observations: Point[], binCount = 20): HistogramDat
     const observations = chartData.observations.map(observation => ({
       x: observation.time,
       y: observation.value,
-      id: observation.id
+      id: observation.id,
+      annotations: observation.annotations
     }));
     const setupPoints = chartData.observations.map(observation => ({
       x: observation.time,
       y: observation.isSetup ? observation.value : NaN,
-      id: observation.id
+      id: observation.id,
+      annotations: observation.annotations
     })) as Point[];
     const monitoredPoints = chartData.observations.map(observation => ({
       x: observation.time,
       y: !observation.isSetup ? observation.value : NaN,
-      id: observation.id
+      id: observation.id,
+      annotations: observation.annotations
     })) as Point[];
 
     let labels: string[];

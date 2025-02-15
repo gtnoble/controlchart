@@ -265,13 +265,14 @@ SELECT block_id, block_start, record_count FROM time_blocks;
     ).run(chartDataId, annotation, unixTime);
   }
 
-  getAnnotations(chartDataId: number): string[] {
-    const results = this.database.prepare<{ chart_data_id: number }>(
+  getAnnotation(chartDataId: number): string | null {
+    const result = this.database.prepare<{ chart_data_id: number }>(
       `SELECT annotation FROM chart_annotations 
        WHERE chart_data_id = ? 
-       ORDER BY created_time`
-    ).all({ chart_data_id: chartDataId }) as Array<{ annotation: string }>;
-    return results.map(r => r.annotation);
+       ORDER BY created_time DESC
+       LIMIT 1`
+    ).get({ chart_data_id: chartDataId }) as { annotation: string } | undefined;
+    return result?.annotation || null;
   }
   
   getLatestDataTime(dataName: string) {
