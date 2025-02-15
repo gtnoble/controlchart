@@ -26,6 +26,7 @@ export async function startServer(databaseFilename: string) {
     root: path.join(
       path.dirname(fileURLToPath(import.meta.url)),
       "..",
+      "..",
       "frontend/dist"
     )
   });

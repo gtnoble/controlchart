@@ -11,5 +11,3 @@ export interface Chart {
     isSetup: boolean;
   }[];
 }
-
-export type ChartType = import("../chartDb").ChartType;

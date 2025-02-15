@@ -1,0 +1,117 @@
+#!/usr/bin/env node
+import { execSync } from 'node:child_process';
+import * as readline from 'node:readline';
+import yargs from 'yargs';
+import { ChartDb } from './chartDb.js';
+import { startServer } from './server.js';
+const ONE_DAY_MS = 1000 * 60 * 60 * 24;
+async function main() {
+    await yargs(process.argv.slice(2))
+        .command("collect [command]", "collect data points", (yargs) => {
+        yargs
+            .options({
+            database: { type: "string", alias: "d", required: true },
+            interval: { type: "number", alias: "i", default: 1000 },
+            name: { type: "string", alias: "n", required: true }
+        });
+    }, collectHandler)
+        .command("init", "initialize a control chart", (yargs) => {
+        yargs
+            .options({
+            database: { type: "string", alias: "d", required: true },
+            type: { type: "string", alias: "t", default: "individuals" },
+            chart_name: { type: "string", alias: "c", required: true },
+            data_name: { type: "string", alias: "n", required: true },
+            setup_start_time: { type: "string", alias: "s" },
+            setup_end_time: { type: "string", alias: "e" },
+            aggregation_interval: { type: "number", alias: "g", default: ONE_DAY_MS }
+        });
+    }, initHandler)
+        .command("server", "start the web UI", (yargs) => {
+        yargs.options({
+            database: { type: "string", alias: "d", required: true }
+        });
+    }, server)
+        .command("chart", "get the raw control chart data", (yargs) => {
+        yargs.options({
+            database: { type: "string", alias: "d", required: true },
+            chart_name: { type: "string", alias: "c", required: true },
+            start_time: { type: "string", alias: "s", default: (new Date(0)).toISOString() },
+            end_time: { type: "string", alias: "e", default: (new Date()).toISOString() },
+        });
+    }, chartHandler)
+        .command("transform", "set the data transformation for the control chart", (yargs) => {
+        yargs.options({
+            database: { type: "string", alias: "d", required: true },
+            chart_name: { type: "string", alias: "c", required: true },
+            transformation: { type: "string", alias: "t", default: "none" }
+        });
+    }, transformHandler)
+        .strict()
+        .demandCommand(1, "You must provide a valid command")
+        .parse();
+}
+function transformHandler(argv) {
+    const database = new ChartDb(argv.d);
+    const transformationName = argv.transformation;
+    validateChartName(argv.chart_name, database);
+    if (transformationName === "none") {
+        database.setTransformation(argv.chart_name, undefined);
+    }
+    else if (transformationName === "log") {
+        database.setTransformation(argv.chart_name, "log");
+    }
+    else {
+        throw new Error(`Transformation name must be either "none" or "log": given: ${transformationName}`);
+    }
+}
+async function collectHandler(argv) {
+    const command = argv.command;
+    const database = new ChartDb(argv.d);
+    if (command) {
+        while (true) {
+            let commandOutput;
+            try {
+                commandOutput = execSync(command, { encoding: "utf-8" });
+            }
+            catch (e) {
+                console.error(`Command execution failed, ignoring: details: ${e}`);
+                await new Promise(resolve => setTimeout(resolve, argv.interval));
+                continue;
+            }
+            const value = Number(commandOutput);
+            database.addObservation(value, argv.name);
+            await new Promise(resolve => setTimeout(resolve, argv.interval));
+        }
+    }
+    else {
+        const rl = readline.createInterface(process.stdin);
+        rl.on('line', (lineString) => database.addObservation(Number(lineString.trim()), argv.name));
+    }
+}
+async function initHandler(argv) {
+    const database = new ChartDb(argv.d);
+    database.initializeChart(argv.chart_name, argv.data_name, argv.type, argv.aggregation_interval);
+    if (argv.setup_start_time && argv.setup_end_time) {
+        database.addChartSetup(argv.chart_name, new Date(argv.start_time), new Date(argv.end_time));
+    }
+    else if (argv.setup_start_time || argv.setup_end_time) {
+        throw new Error("If you are specifying a setup interval, you must specify both the start and end times");
+    }
+}
+async function server(argv) {
+    await startServer(argv.database);
+}
+async function chartHandler(argv) {
+    const database = new ChartDb(argv.d);
+    validateChartName(argv.chart_name, database);
+    console.log(JSON.stringify(database.getChart(argv.chart_name, (new Date(argv.start_time)).valueOf(), (new Date(argv.end_time)).valueOf())));
+}
+function validateChartName(chartName, database) {
+    const availableChartNames = database.getAvailableCharts();
+    if (!availableChartNames.includes(chartName)) {
+        throw new Error(`Chart name ${chartName} is not a valid chart name!`);
+    }
+}
+main();
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiaW5kZXguanMiLCJzb3VyY2VSb290IjoiIiwic291cmNlcyI6WyJpbmRleC50cyJdLCJuYW1lcyI6W10sIm1hcHBpbmdzIjoiO0FBQ0EsT0FBTyxFQUFFLFFBQVEsRUFBRSxNQUFNLG9CQUFvQixDQUFDO0FBQzlDLE9BQU8sS0FBSyxRQUFRLE1BQU0sZUFBZSxDQUFDO0FBRTFDLE9BQU8sS0FBSyxNQUFNLE9BQU8sQ0FBQztBQUUxQixPQUFPLEVBQUUsT0FBTyxFQUFFLE1BQU0sY0FBYyxDQUFDO0FBQ3ZDLE9BQU8sRUFBRSxXQUFXLEVBQUUsTUFBTSxhQUFhLENBQUM7QUFFMUMsTUFBTSxVQUFVLEdBQUcsSUFBSSxHQUFHLEVBQUUsR0FBRyxFQUFFLEdBQUcsRUFBRSxDQUFDO0FBRXZDLEtBQUssVUFBVSxJQUFJO0lBRWpCLE1BQU0sS0FBSyxDQUFDLE9BQU8sQ0FBQyxJQUFJLENBQUMsS0FBSyxDQUFDLENBQUMsQ0FBQyxDQUFDO1NBQy9CLE9BQU8sQ0FDTixtQkFBbUIsRUFDbkIscUJBQXFCLEVBQ3JCLENBQUMsS0FBSyxFQUFFLEVBQUU7UUFDUixLQUFLO2FBQ0osT0FBTyxDQUFDO1lBQ1AsUUFBUSxFQUFFLEVBQUMsSUFBSSxFQUFFLFFBQVEsRUFBRSxLQUFLLEVBQUUsR0FBRyxFQUFFLFFBQVEsRUFBRSxJQUFJLEVBQUM7WUFDdEQsUUFBUSxFQUFFLEVBQUMsSUFBSSxFQUFFLFFBQVEsRUFBRSxLQUFLLEVBQUUsR0FBRyxFQUFFLE9BQU8sRUFBRSxJQUFJLEVBQUM7WUFDckQsSUFBSSxFQUFFLEVBQUMsSUFBSSxFQUFFLFFBQVEsRUFBRSxLQUFLLEVBQUUsR0FBRyxFQUFFLFFBQVEsRUFBRSxJQUFJLEVBQUM7U0FDbkQsQ0FBQyxDQUFBO0lBQUEsQ0FBQyxFQUNMLGNBQWMsQ0FDZjtTQUNBLE9BQU8sQ0FDTixNQUFNLEVBQ04sNEJBQTRCLEVBQzVCLENBQUMsS0FBSyxFQUFFLEVBQUU7UUFDUixLQUFLO2FBQ0osT0FBTyxDQUNOO1lBQ0UsUUFBUSxFQUFF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

@@ -1,5 +1,7 @@
 import statistics from '@stdlib/stats';
-import kstest from '@stdlib/stats/kstest';
+
+const kstest = statistics.kstest;
+
 
 export interface ControlLimitsType {
   mean: number,

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import Database from 'better-sqlite3';
 
 import * as stats from './stats.js';
+import type { Chart } from './types/chart.d.ts';
 
 export type ChartType = "individuals" | "counts";
 
@@ -19,11 +20,6 @@ const NULL_TRANSFORMATION: TransformationPair = {
   forward: (value) => value,
   reverse: (value) => value
 };
-
-/**
- * The Chart interface is now defined in src/types/chart.d.ts
- */
-export type { Chart } from './types/chart.d.ts';
 
 interface ChartParametersSchema {
   chartType: string;
