@@ -95,11 +95,37 @@ chartSelectDropdown.addEventListener('show.bs.dropdown', updateChartDropdown);
     throw new Error(`${chartElement} must refer to a canvas tag`);
   }
   
-  const chart = new Chart(
+  let currentChartType: 'control' | 'histogram' = 'control';
+  
+interface HistogramData {
+  labels: string[];
+  data: number[];
+}
+
+function createHistogramData(observations: Point[], binCount = 20): HistogramData {
+    const values = observations.map(o => o.y).filter(y => y !== null) as number[];
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const binSize = (max - min) / binCount;
+    
+    const bins = Array(binCount).fill(0);
+    values.forEach(value => {
+      const binIndex = Math.floor((value - min) / binSize);
+      bins[Math.min(binIndex, binCount-1)]++;
+    });
+    
+    return {
+      labels: Array.from({length: binCount}, (_, i) => 
+        `${(min + i*binSize).toFixed(1)}-${(min + (i+1)*binSize).toFixed(1)}`),
+      data: bins
+    };
+  }
+
+  let chart = new Chart(
       chartElement,
     {
       type: 'line',
-      data: await getData(),
+      data: await getData(currentChartType),
       options: {
         responsive: true,
         plugins: {
@@ -165,7 +191,41 @@ chartSelectDropdown.addEventListener('show.bs.dropdown', updateChartDropdown);
   })
 
 
-  async function getData (startDate?: string, endDate?: string) {
+  // Add chart type dropdown handler
+  document.getElementById('chartType')?.addEventListener('change', async (e) => {
+    currentChartType = (e.target as HTMLSelectElement).value as 'control' | 'histogram';
+    // Destroy old chart and create new one with correct type
+    chart.destroy();
+      chart = new Chart(chartElement, {
+        type: currentChartType === 'histogram' ? 'bar' : 'line',
+      data: await getData(currentChartType),
+      options: {
+        responsive: true,
+        plugins: {
+          zoom: {
+            pan: {
+              enabled: true,
+              mode: 'xy',
+            },
+            zoom: {
+              wheel: {
+                enabled: true
+              },
+              pinch: {
+                enabled: true
+              },
+              mode: 'xy'
+            }
+          }
+        },
+        scales: {
+          y: {type: 'linear'}
+        }
+      },
+    });
+  });
+
+  async function getData (chartType: 'control' | 'histogram', startDate?: string, endDate?: string): Promise<{datasets: ChartDataset[], labels: string[]}> {
 
     const chartData: ChartData = (await axios.get(
       DATA_URL)
@@ -178,7 +238,13 @@ chartSelectDropdown.addEventListener('show.bs.dropdown', updateChartDropdown);
     const monitoredPoints: Point[] = chartData.observations.map(
       (observation) => ({x: observation.time, y: ! observation.isSetup ? observation.value : null})) as Point[];
 
-    const labels: string[] = observations.map((observation) => (new Date(observation.x)).toLocaleString());
+    let labels: string[];
+    if (chartType === 'histogram') {
+      const { labels: binLabels } = createHistogramData(observations);
+      labels = binLabels;
+    } else {
+      labels = observations.map((obs: Point) => new Date(obs.x).toLocaleString());
+    }
 
     let controlLimitsDatasets: ChartDataset[] = [];
     if (chartData.controlLimits) {
@@ -208,21 +274,36 @@ chartSelectDropdown.addEventListener('show.bs.dropdown', updateChartDropdown);
 
     }
     
-    const dataSets: ChartDataset[] =  [
-      {
-        label: "Monitored Observations",
-        order: 0, 
-        data: monitoredPoints,
-        ...MONITORED_STYLE
-      },
-      {
-        label: "Setup Observations",
-        order: 1, 
-        data: setupPoints,
-        ...SETUP_STYLE
-      },
-      ...controlLimitsDatasets
-    ];
+    
+    let dataSets: ChartDataset[];
+    if (chartType === 'histogram') {
+      const histogramData = createHistogramData(observations);
+      
+      dataSets = [
+        {
+          label: "Histogram Data",
+          order: 0,
+          data: histogramData.data,
+          ...SETUP_STYLE
+        }
+      ];
+    } else {
+      dataSets =  [
+        {
+          label: "Monitored Observations",
+          order: 0, 
+          data: monitoredPoints,
+          ...MONITORED_STYLE
+        },
+        {
+          label: "Setup Observations",
+          order: 1, 
+          data: setupPoints,
+          ...SETUP_STYLE
+        },
+        ...controlLimitsDatasets
+      ];
+    }
     
 
     return {datasets: dataSets, labels: labels}
