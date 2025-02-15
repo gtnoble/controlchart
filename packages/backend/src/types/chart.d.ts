@@ -1,4 +1,4 @@
-export interface Chart {
+export interface ChartData {
   type: import("../chartDb").ChartType;
   controlLimits?: {
     mean: number;

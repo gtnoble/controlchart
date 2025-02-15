@@ -9,6 +9,8 @@ import Chart, {
 import zoomPlugin from 'chartjs-plugin-zoom';
 import jQuery from 'jquery';
 
+import type { ChartData } from '../../backend/src/types/chart';
+
 Chart.register(zoomPlugin);
 
 const DATA_URL = "./data";
@@ -53,15 +55,6 @@ const SETUP_STYLE = {
 }
 
 export type ChartType = "individuals" | "counts";
-export interface ChartData {
-  type: ChartType;
-  controlLimits?: {
-    mean: number;
-    upperControlLimit: number;
-    lowerControlLimit: number;
-  }
-  observations: {value: number, time: number, isSetup: boolean}[];
-}
 
 function makeEdgePoints(value: number, observations: {x: number, y:number}[]) {
   const points = observations.map((point, index) => ({x: point.x, y: value}));

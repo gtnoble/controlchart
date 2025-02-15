@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import Database from 'better-sqlite3';
 
 import * as stats from './stats.js';
-import type { Chart } from './types/chart.d.ts';
+import type { ChartData } from './types/chart.d.ts';
 
 export type ChartType = "individuals" | "counts";
 
@@ -410,7 +410,7 @@ SELECT block_id, block_start, record_count FROM time_blocks;
     
   }
   
-  getChart (chartName: string, startTime?: number, endTime?: number): Chart {
+  getChart (chartName: string, startTime?: number, endTime?: number): ChartData {
     const parameters = this.getChartParameters(chartName);
     const setup = this.getChartSetup(chartName);
     const transformations = this.getTransformation(chartName);
