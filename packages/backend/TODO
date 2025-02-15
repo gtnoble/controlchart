@@ -8,7 +8,6 @@ add graceful handling of empty charts table
 add graph view randomness Test
 add graph view distribution test
 add point annotations
-add histogram mode
 add autocorrelation mode
 add list dataName cli option
 display view point count in UI

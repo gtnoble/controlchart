@@ -6,12 +6,14 @@ import Chart, {
   ChartDataset,
   Point,
 } from 'chart.js/auto';
+import ChartDataLabels from 'chartjs-plugin-datalabels';
 import zoomPlugin from 'chartjs-plugin-zoom';
 import jQuery from 'jquery';
 
 import type { ChartData } from '../../backend/src/types/chart';
 
 Chart.register(zoomPlugin);
+Chart.register(ChartDataLabels);
 
 const DATA_URL = "./data";
 const AVAILABLE_CHARTS_URL = "/availableCharts";
@@ -127,7 +129,23 @@ function createHistogramData(observations: Point[], binCount = 20): HistogramDat
       type: 'line',
       data: await getData(currentChartType),
       options: {
+        onClick: (event, elements) => {
+          if (elements.length > 0) {
+            const { datasetIndex, index } = elements[0];
+            const point = chart.data.datasets[datasetIndex].data[index] as any;
+            if (point?.id) {
+              const annotation = prompt('Enter annotation for this observation:');
+              if (annotation) {
+                axios.post(`/dataPoint/${point.id}/annotate`, { annotation })
+                  .catch(error => alert(`Error saving annotation: ${error.message}`));
+              }
+            }
+          }
+        },
         responsive: true,
+        scales: {
+          y: {type: 'linear'}
+        },
         plugins: {
           zoom: {
             pan: {
@@ -144,9 +162,6 @@ function createHistogramData(observations: Point[], binCount = 20): HistogramDat
               mode: 'xy'
             }
           }
-        },
-        scales: {
-          y: {type: 'linear'}
         }
       },
     }
@@ -231,12 +246,21 @@ function createHistogramData(observations: Point[], binCount = 20): HistogramDat
       DATA_URL)
     ).data;
     
-    const observations: Point[] = chartData.observations.map(
-      (observation) => ({x: observation.time, y: observation.value}));
-    const setupPoints: Point[] = chartData.observations.map(
-      (observation) => ({x: observation.time, y: observation.isSetup ? observation.value : null})) as Point[];
-    const monitoredPoints: Point[] = chartData.observations.map(
-      (observation) => ({x: observation.time, y: ! observation.isSetup ? observation.value : null})) as Point[];
+    const observations = chartData.observations.map(observation => ({
+      x: observation.time,
+      y: observation.value,
+      id: observation.id
+    }));
+    const setupPoints = chartData.observations.map(observation => ({
+      x: observation.time,
+      y: observation.isSetup ? observation.value : NaN,
+      id: observation.id
+    })) as Point[];
+    const monitoredPoints = chartData.observations.map(observation => ({
+      x: observation.time,
+      y: !observation.isSetup ? observation.value : NaN,
+      id: observation.id
+    })) as Point[];
 
     let labels: string[];
     if (chartType === 'histogram') {

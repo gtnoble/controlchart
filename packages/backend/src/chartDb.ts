@@ -28,6 +28,13 @@ interface ChartParametersSchema {
 }
 
 interface ChartPointSchema {
+  id?: number;
+  time: number;
+  value: number;
+  annotations?: string;
+}
+
+interface ChartCountPointSchema {
   time: number;
   value: number;
 }
@@ -215,9 +222,12 @@ export class ChartDb {
     
     this.getChartPointsQuery = this.database.prepare(
       `
-      SELECT time, value 
-      FROM chart_data 
+      SELECT chart_data.id, time, value, 
+             GROUP_CONCAT(chart_annotations.annotation) AS annotations
+      FROM chart_data
+      LEFT JOIN chart_annotations ON chart_data.id = chart_annotations.chart_data_id
       WHERE dataName = ? AND time BETWEEN ? AND ?
+      GROUP BY chart_data.id
       ORDER BY time`
     )
     
@@ -433,12 +443,13 @@ SELECT block_id, block_start, record_count FROM time_blocks;
       throw new Error(`Invalid chart type: ${parameters.chartType}`);
     }
     
-    const observations = points.map((point) => {
-      return {
-        ...point, 
-        isSetup: setup !== undefined && point.time >= setup.setupStartTime && point.time <= setup.setupEndTime
-      }
-    })
+    const observations = points.map((point: any) => ({
+      id: point.id,
+      value: point.value,
+      time: point.time,
+      isSetup: setup !== undefined && point.time >= setup.setupStartTime && point.time <= setup.setupEndTime,
+      annotations: point.annotations ? point.annotations.split(',') : []
+    }));
     
     return {
       type: parameters.chartType,

@@ -6,8 +6,10 @@ export interface ChartData {
     lowerControlLimit: number;
   };
   observations: {
+    id: number;
     value: number;
     time: number;
     isSetup: boolean;
+    annotations: string[];
   }[];
 }
