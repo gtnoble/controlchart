@@ -191,6 +191,11 @@ function createHistogramData(observations: Point[], binCount = 20): HistogramDat
     chart.update();
   })
 
+  // Add zoom reset functionality
+  document.getElementById('resetZoom')?.addEventListener('click', () => {
+    chart.resetZoom();
+  });
+
   const currentURLComponents = new URL(window.location.href).pathname.split('/');
   const chartName = currentURLComponents[2];
   const currentStartTime = Number(currentURLComponents[4]);
