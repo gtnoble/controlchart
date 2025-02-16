@@ -5,7 +5,7 @@ import * as readline from 'node:readline';
 import yargs from 'yargs';
 
 import { ChartDb } from './chartDb.js';
-import { startServer } from './server.js';
+import { Server } from './server.js';
 
 const ONE_DAY_MS = 1000 * 60 * 60 * 24;
 
@@ -48,7 +48,8 @@ async function main () {
         "start the web UI",
         (yargs) => {
           yargs.options({
-            database: {type: "string", alias: "d", required: true}
+            database: {type: "string", alias: "d", required: true},
+            port: {type: "number", alias: "p", default: 42069}
           })
         },
         server
@@ -158,7 +159,8 @@ async function initHandler (argv: any) {
 }
 
 async function server (argv: any) {
-  await startServer(argv.database);
+  const server = new Server(argv.database);
+  server.start(argv.port)
 }
 
 async function chartHandler (argv: any) {

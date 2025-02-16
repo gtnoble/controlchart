@@ -181,6 +181,11 @@ export class ChartDb {
     );
   }
 
+  saveObservation(observation: { value: number; dataName: string; time: string }) {
+      const sql = `INSERT INTO chart_data (time, value, dataName) VALUES (?, ?, ?)`;
+      this.database.prepare(sql).run(observation.time, observation.value, observation.dataName);
+    };
+
   addObservation(value: number, dataName: string): number {
     const unixTime = Date.now();
     this.insertObservationQuery.run(unixTime, value, dataName);

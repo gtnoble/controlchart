@@ -16,48 +16,88 @@ interface ChartParams {
   dataPointId?: string;
 }
 
-export async function startServer(databaseFilename: string) {
-  const database = new ChartDb(databaseFilename);
-  const fastify = Fastify({ logger: true });
+interface ObservationRequestBody {
+  value: number;
+  dataName: string;
+  time?: string;
+}
 
-  fastify.register(fastifyForms);
-  fastify.register(fastifyStatic, {
-    root: path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "frontend/dist")
-  });
+export class Server {
+  private database: ChartDb;
+  private fastify: Fastify.FastifyInstance;
 
-  fastify.get('/availableCharts', getAvailableChartsHandler);
-  fastify.get('/chart/:chartName', getChartHandler);
-  fastify.get('/chart/:chartName/startTime/:startTime/endTime/:endTime/chart', serveChartHtmlHandler);
-  fastify.get('/chart/:chartName/startTime/:startTime/endTime/:endTime/:filename', serveFileHandler);
-  fastify.get('/chart/:chartName/startTime/:startTime/endTime/:endTime/data', getChartDataHandler);
-  fastify.post('/chart/:chartName/startTime/:startTime/endTime/:endTime/setSetup', setChartSetupHandler);
-  fastify.post('/dataPoint/:dataPointId/annotate', addAnnotationHandler);
-  fastify.get('/dataPoint/:dataPointId/annotation', getAnnotationHandler);
+  constructor(databaseFilename: string) {
+    this.database = new ChartDb(databaseFilename);
+    this.fastify = Fastify({ logger: true });
 
-  await fastify.listen({ port: 3000 });
+    this.fastify.register(fastifyForms);
+    this.fastify.register(fastifyStatic, {
+      root: path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "frontend/dist")
+    });
+
+    this.setupRoutes();
+  }
+
+  private setupRoutes() {
+    this.fastify.get('/availableCharts', this.getAvailableChartsHandler.bind(this));
+    this.fastify.get('/chart/:chartName', this.getChartHandler.bind(this));
+    this.fastify.get('/chart/:chartName/startTime/:startTime/endTime/:endTime/chart', this.serveChartHtmlHandler.bind(this));
+    this.fastify.get('/chart/:chartName/startTime/:startTime/endTime/:endTime/:filename', this.serveFileHandler.bind(this));
+    this.fastify.get('/chart/:chartName/startTime/:startTime/endTime/:endTime/data', this.getChartDataHandler.bind(this));
+    this.fastify.post('/chart/:chartName/startTime/:startTime/endTime/:endTime/setSetup', this.setChartSetupHandler.bind(this));
+    this.fastify.post('/dataPoint/:dataPointId/annotate', this.addAnnotationHandler.bind(this));
+    this.fastify.get('/dataPoint/:dataPointId/annotation', this.getAnnotationHandler.bind(this));
+
+    // New endpoint for adding observations
+    this.fastify.post<{ Body: ObservationRequestBody }>('/api/observations', async (request, reply) => {
+      try {
+        const { value, dataName } = request.body;
+
+        if (!value || !dataName) {
+          return reply.status(400).send({ error: 'Missing required fields: value and dataName' });
+        }
+
+        const observation = {
+          value,
+          dataName,
+          time: request.body.time || new Date().toISOString()
+        };
+
+        this.database.saveObservation(observation);
+        reply.status(201).send({ message: 'Observation saved successfully' });
+      } catch (error) {
+        console.error('Error saving observation:', error);
+        reply.status(500).send({ error: 'Failed to save observation' });
+      }
+    });
+  }
+
+  public async start(port: number) {
+    await this.fastify.listen({ port });
+  }
 
   // Handler functions
-  async function getAvailableChartsHandler(request: any, reply: any) {
+  private async getAvailableChartsHandler(request: any, reply: any) {
     try {
-      return database.getAvailableCharts();
+      return this.database.getAvailableCharts();
     } catch (error) {
       reply.code(500).send({ error: 'Failed to get available charts' });
     }
   }
 
-  async function getChartHandler(request: any, reply: any) {
+  private async getChartHandler(request: any, reply: any) {
     try {
       const params = request.params as ChartParams;
-      const chartParams = database.getChartParameters(params.chartName);
-      const dataLimits = database.getChartDataLimits(chartParams);
-      
+      const chartParams = this.database.getChartParameters(params.chartName);
+      const dataLimits = this.database.getChartDataLimits(chartParams);
+
       return reply.redirect(`/chart/${params.chartName}/startTime/${dataLimits[0]}/endTime/${dataLimits[1]}/chart`);
     } catch (error) {
       reply.code(500).send({ error: 'Failed to get chart' });
     }
   }
 
-  async function serveChartHtmlHandler(request: any, reply: any) {
+  private async serveChartHtmlHandler(request: any, reply: any) {
     try {
       return reply.sendFile("chart.html");
     } catch (error) {
@@ -65,34 +105,34 @@ export async function startServer(databaseFilename: string) {
     }
   }
 
-  async function serveFileHandler(request: any, reply: any) {
+  private async serveFileHandler(request: any, reply: any) {
     try {
       const params = request.params as ChartParams;
       assert("filename" in params);
       const filename = params.filename as string;
       assert(typeof filename === "string");
-      
+
       return reply.sendFile(filename);
     } catch (error) {
       reply.code(500).send({ error: 'Failed to serve file' });
     }
   }
 
-  async function getChartDataHandler(request: any, reply: any) {
+  private async getChartDataHandler(request: any, reply: any) {
     try {
       const params = request.params as ChartParams;
       const startTime = Number(params.startTime);
       const endTime = Number(params.endTime);
       const chartName = params.chartName;
       assert(typeof chartName === "string");
-      
-      return database.getChart(chartName, startTime, endTime);
+
+      return this.database.getChart(chartName, startTime, endTime);
     } catch (error) {
       reply.code(500).send({ error: 'Failed to get chart data' });
     }
   }
 
-  async function setChartSetupHandler(request: any, reply: any) {
+  private async setChartSetupHandler(request: any, reply: any) {
     try {
       const params = request.params as ChartParams;
       const startTime = Number(params.startTime);
@@ -100,30 +140,30 @@ export async function startServer(databaseFilename: string) {
       const chartName = params.chartName;
       assert(typeof chartName === "string");
 
-      database.addChartSetup(chartName, new Date(startTime), new Date(endTime));
+      this.database.addChartSetup(chartName, new Date(startTime), new Date(endTime));
       return reply.redirect("./chart");
     } catch (error) {
       reply.code(500).send({ error: 'Failed to set chart setup' });
     }
   }
 
-  async function addAnnotationHandler(request: any, reply: any) {
+  private async addAnnotationHandler(request: any, reply: any) {
     try {
       const params = request.params as ChartParams;
       const annotation = request.body as { annotation: string };
       const chartDataId = Number(params.dataPointId);
-      
-      database.addAnnotation(chartDataId, annotation.annotation);
+
+      this.database.addAnnotation(chartDataId, annotation.annotation);
       return { success: true };
     } catch (error) {
       reply.code(500).send({ error: 'Failed to add annotation' });
     }
   }
 
-  async function getAnnotationHandler(request: any, reply: any) {
+  private async getAnnotationHandler(request: any, reply: any) {
     try {
       const params = request.params as ChartParams;
-      const annotation = await database.getAnnotation(Number(params.dataPointId));
+      const annotation = await this.database.getAnnotation(Number(params.dataPointId));
       reply.send({ annotation });
     } catch (error) {
       reply.status(500).send(error instanceof Error ? error.message : 'Unknown error');
