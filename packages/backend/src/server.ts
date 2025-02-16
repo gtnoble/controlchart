@@ -21,16 +21,22 @@ export async function startServer(databaseFilename: string) {
   const fastify = Fastify({ logger: true });
 
   fastify.register(fastifyForms);
-
   fastify.register(fastifyStatic, {
-    root: path.join(
-      path.dirname(fileURLToPath(import.meta.url)),
-      "..",
-      "..",
-      "frontend/dist"
-    )
+    root: path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "frontend/dist")
   });
 
+  fastify.get('/availableCharts', getAvailableChartsHandler);
+  fastify.get('/chart/:chartName', getChartHandler);
+  fastify.get('/chart/:chartName/startTime/:startTime/endTime/:endTime/chart', serveChartHtmlHandler);
+  fastify.get('/chart/:chartName/startTime/:startTime/endTime/:endTime/:filename', serveFileHandler);
+  fastify.get('/chart/:chartName/startTime/:startTime/endTime/:endTime/data', getChartDataHandler);
+  fastify.post('/chart/:chartName/startTime/:startTime/endTime/:endTime/setSetup', setChartSetupHandler);
+  fastify.post('/dataPoint/:dataPointId/annotate', addAnnotationHandler);
+  fastify.get('/dataPoint/:dataPointId/annotation', getAnnotationHandler);
+
+  await fastify.listen({ port: 3000 });
+
+  // Handler functions
   async function getAvailableChartsHandler(request: any, reply: any) {
     try {
       return database.getAvailableCharts();
@@ -45,9 +51,7 @@ export async function startServer(databaseFilename: string) {
       const chartParams = database.getChartParameters(params.chartName);
       const dataLimits = database.getChartDataLimits(chartParams);
       
-      return reply.redirect(
-        `/chart/${params.chartName}/startTime/${dataLimits[0]}/endTime/${dataLimits[1]}/chart`
-      );
+      return reply.redirect(`/chart/${params.chartName}/startTime/${dataLimits[0]}/endTime/${dataLimits[1]}/chart`);
     } catch (error) {
       reply.code(500).send({ error: 'Failed to get chart' });
     }
@@ -103,33 +107,20 @@ export async function startServer(databaseFilename: string) {
     }
   }
 
-  fastify.get('/availableCharts', getAvailableChartsHandler);
-  fastify.get('/chart/:chartName', getChartHandler);
-  fastify.get('/chart/:chartName/startTime/:startTime/endTime/:endTime/chart', serveChartHtmlHandler);
-  fastify.get('/chart/:chartName/startTime/:startTime/endTime/:endTime/:filename', serveFileHandler);
-  fastify.get('/chart/:chartName/startTime/:startTime/endTime/:endTime/data', getChartDataHandler);
-  fastify.post('/chart/:chartName/startTime/:startTime/endTime/:endTime/setSetup', setChartSetupHandler);
-
   async function addAnnotationHandler(request: any, reply: any) {
     try {
       const params = request.params as ChartParams;
       const annotation = request.body as { annotation: string };
-      
-      // Get the chart data ID from URL parameters
       const chartDataId = Number(params.dataPointId);
       
-      // Add the annotation
       database.addAnnotation(chartDataId, annotation.annotation);
-
       return { success: true };
     } catch (error) {
       reply.code(500).send({ error: 'Failed to add annotation' });
     }
   }
 
-  fastify.post('/dataPoint/:dataPointId/annotate', addAnnotationHandler);
-
-  fastify.get('/dataPoint/:dataPointId/annotation', async (request, reply) => {
+  async function getAnnotationHandler(request: any, reply: any) {
     try {
       const params = request.params as ChartParams;
       const annotation = await database.getAnnotation(Number(params.dataPointId));
@@ -137,7 +128,5 @@ export async function startServer(databaseFilename: string) {
     } catch (error) {
       reply.status(500).send(error instanceof Error ? error.message : 'Unknown error');
     }
-  });
-
-  await fastify.listen({ port: 3000 });
+  }
 }
