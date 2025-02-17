@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import Database from 'better-sqlite3';
 
 import * as stats from './stats.js';
-import type { ChartData } from './types/chart.d.ts';
-
-export type ChartType = "individuals" | "counts";
+import type {
+  ChartData,
+  ChartType,
+} from './types/chart.d.ts';
 
 export type TransformationName = "log" | undefined;
 export type TransformationType = (value: number) => number;
@@ -183,13 +184,14 @@ export class ChartDb {
 
   saveObservation(observation: { value: number; dataName: string; time: string }) {
       const sql = `INSERT INTO chart_data (time, value, dataName) VALUES (?, ?, ?)`;
-      this.database.prepare(sql).run(observation.time, observation.value, observation.dataName);
+      const result = this.database.prepare(sql).run(observation.time, observation.value, observation.dataName);
+      return Number(result.lastInsertRowid);
     };
 
   addObservation(value: number, dataName: string): number {
     const unixTime = Date.now();
-    this.insertObservationQuery.run(unixTime, value, dataName);
-    return (this.database.prepare("SELECT last_insert_rowid() AS id").get() as { id: number }).id;
+    const result = this.insertObservationQuery.run(unixTime, value, dataName);
+    return Number(result.lastInsertRowid);
   }
 
 
@@ -350,7 +352,7 @@ export class ChartDb {
 
   }
 
-  getChart(chartName: string, startTime?: number, endTime?: number): ChartData {
+  getChart(chartName: string, startTime?: number, endTime?: number, transformed?: boolean): ChartData {
     const parameters = this.getChartParameters(chartName);
     const setup = this.getChartSetup(chartName);
     const transformations = this.getTransformation(chartName);
@@ -372,10 +374,12 @@ export class ChartDb {
     else {
       throw new Error(`Invalid chart type: ${parameters.chartType}`);
     }
+    
+    const forwardTransformation = transformed ? transformations.forward : NULL_TRANSFORMATION.forward;
 
     const observations = points.map((point: any) => ({
       id: point.id,
-      value: point.value,
+      value: forwardTransformation(point.value),
       time: point.time,
       isSetup: setup !== undefined && point.time >= setup.setupStartTime && point.time <= setup.setupEndTime,
       annotations: point.annotations ? point.annotations.split(',') : []
@@ -383,7 +387,11 @@ export class ChartDb {
 
     return {
       type: parameters.chartType,
-      controlLimits: limits,
+      controlLimits: limits && {
+        mean: forwardTransformation(limits.mean),
+        upperControlLimit: forwardTransformation(limits.upperControlLimit),
+        lowerControlLimit: forwardTransformation(limits.lowerControlLimit)
+      },
       observations: observations
     };
   }

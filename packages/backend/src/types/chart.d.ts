@@ -1,5 +1,6 @@
+export type ChartType = "individuals" | "counts";
 export interface ChartData {
-  type: import("../chartDb").ChartType;
+  type: ChartType;
   controlLimits?: {
     mean: number;
     upperControlLimit: number;

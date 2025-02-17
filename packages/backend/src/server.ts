@@ -20,6 +20,7 @@ interface ObservationRequestBody {
   value: number;
   dataName: string;
   time?: string;
+  annotation?: string;
 }
 
 export class Server {
@@ -44,6 +45,7 @@ export class Server {
     this.fastify.get('/chart/:chartName/startTime/:startTime/endTime/:endTime/chart', this.serveChartHtmlHandler.bind(this));
     this.fastify.get('/chart/:chartName/startTime/:startTime/endTime/:endTime/:filename', this.serveFileHandler.bind(this));
     this.fastify.get('/chart/:chartName/startTime/:startTime/endTime/:endTime/data', this.getChartDataHandler.bind(this));
+    this.fastify.get('/chart/:chartName/startTime/:startTime/endTime/:endTime/transformedData', (request, reply) => this.getChartDataHandler(request, reply, true));
     this.fastify.post('/chart/:chartName/startTime/:startTime/endTime/:endTime/setSetup', this.setChartSetupHandler.bind(this));
     this.fastify.post('/dataPoint/:dataPointId/annotate', this.addAnnotationHandler.bind(this));
     this.fastify.get('/dataPoint/:dataPointId/annotation', this.getAnnotationHandler.bind(this));
@@ -51,9 +53,9 @@ export class Server {
     // New endpoint for adding observations
     this.fastify.post<{ Body: ObservationRequestBody }>('/api/observations', async (request, reply) => {
       try {
-        const { value, dataName } = request.body;
+      const { value, dataName, annotation } = request.body;
 
-        if (!value || !dataName) {
+      if (!value || !dataName) {
           return reply.status(400).send({ error: 'Missing required fields: value and dataName' });
         }
 
@@ -63,7 +65,10 @@ export class Server {
           time: request.body.time || new Date().toISOString()
         };
 
-        this.database.saveObservation(observation);
+        const observationId = await this.database.saveObservation(observation);
+        if (annotation) {
+          this.database.addAnnotation(observationId, annotation);
+        }
         reply.status(201).send({ message: 'Observation saved successfully' });
       } catch (error) {
         console.error('Error saving observation:', error);
@@ -118,7 +123,7 @@ export class Server {
     }
   }
 
-  private async getChartDataHandler(request: any, reply: any) {
+  private async getChartDataHandler(request: any, reply: any, transformed: boolean = false) {
     try {
       const params = request.params as ChartParams;
       const startTime = Number(params.startTime);
@@ -126,7 +131,7 @@ export class Server {
       const chartName = params.chartName;
       assert(typeof chartName === "string");
 
-      return this.database.getChart(chartName, startTime, endTime);
+      return this.database.getChart(chartName, startTime, endTime, transformed);
     } catch (error) {
       reply.code(500).send({ error: 'Failed to get chart data' });
     }

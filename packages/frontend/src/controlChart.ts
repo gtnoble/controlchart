@@ -14,6 +14,7 @@ import type { ChartData } from '../../backend/src/types/chart';
 Chart.register(zoomPlugin);
 
 const DATA_URL = "./data";
+const TRANSFORMED_DATA_URL = "./transformedData";
 const AVAILABLE_CHARTS_URL = "/availableCharts";
 
 /**
@@ -113,6 +114,15 @@ async function updateChartDropdown(): Promise<void> {
   }
 
   let currentChartType: 'control' | 'histogram' = 'control';
+  let isTransformedData = false;
+
+  // Add toggle handler
+  document.getElementById('dataTransformToggle')?.addEventListener('change', async (e) => {
+    isTransformedData = (e.target as HTMLInputElement).checked;
+    const data = await getData(currentChartType, isTransformedData);
+    chart.data = data;
+    chart.update();
+  });
 
   // Initialize chart
   let chart = new Chart(chartElement, {
@@ -292,8 +302,9 @@ function createHistogramData(observations: Point[], binCount: number | 'auto' = 
  * @param chartType Type of chart to display
  * @returns Chart data including datasets and labels
  */
-async function getData(chartType: 'control' | 'histogram'): Promise<{ datasets: ChartDataset[]; labels: string[] }> {
-  const chartData: ChartData = (await axios.get(DATA_URL)).data;
+async function getData(chartType: 'control' | 'histogram', transformed = false): Promise<{ datasets: ChartDataset[]; labels: string[] }> {
+  const url = transformed ? TRANSFORMED_DATA_URL : DATA_URL;
+  const chartData: ChartData = (await axios.get(url)).data;
 
   const observations = chartData.observations.map(observation => ({
     x: observation.time,
