@@ -2,10 +2,15 @@ import assert from 'node:assert/strict';
 
 import Database from 'better-sqlite3';
 
+import statistics from '@stdlib/stats';
+
 import * as stats from './stats.js';
 import type {
   ChartData,
   ChartType,
+  ChartValue,
+  ControlLimitsType,
+  Observation,
 } from './types/chart.d.ts';
 
 export type TransformationName = "log" | undefined;
@@ -23,17 +28,31 @@ const NULL_TRANSFORMATION: TransformationPair = {
 };
 
 interface ChartParametersSchema {
-  chartType: string;
+  chartType: ChartType;
   dataName: string;
   aggregationInterval: number;
+  setupStartTime: number;
+  setupEndTime: number;
+  transformation: string;
 }
 
 interface ChartPointSchema {
   id?: number;
   time: number;
-  value: number;
+  individualsValue: ChartValue;
+  cusumValue: ChartValue;
   annotations?: string;
 }
+
+type ChartQueryResultSchema = {
+      id: number,
+      value: number,
+      transformedValue: number,
+      cusum: number,
+      transformedCusum: number,
+      time: number,
+      annotations: string
+    }
 
 interface ChartCountPointSchema {
   time: number;
@@ -47,7 +66,8 @@ interface ChartSetupSchema {
 }
 
 export class ChartDb {
-  private readonly SQL = {
+  
+  private readonly createSQL: Record<string, string> = {
     createChartDataTable: `
       CREATE TABLE IF NOT EXISTS chart_data (
         id INTEGER PRIMARY KEY ASC AUTOINCREMENT,
@@ -84,6 +104,79 @@ export class ChartDb {
       )`,
     createIndex: `
       CREATE INDEX IF NOT EXISTS chart_data_lookup ON chart_data (time, value, dataName)`,
+    createLatestSetupView: `
+      CREATE TEMP VIEW IF NOT EXISTS latest_setup (
+        chartName, setupStartTime, setupEndTime
+      )
+      AS
+      SELECT 
+        setup.chartName, 
+        max(setup.setupStartTime) OVER(PARTITION BY setup.chartName), 
+        setup.endTime
+      FROM setup;
+    `,
+    setupPointsView: `
+      CREATE VIEW setup_points
+      SELECT
+        id, time, value, chartName
+      FROM
+        chart_data
+      INNER JOIN
+        latest_setup
+      ON
+        chart_data.dataName = latest_setup.dataName
+      WHERE
+        time <= setupEndTime AND
+        time >= setupStartTime
+    `,
+    createSetupStatsView: `
+      CREATE VIEW chart_summary AS
+      SELECT
+          sp.chartName,
+          avg(transform(p.transformation, sp.value)) AS transformedMean,
+          standardDeviation(transform(p.transformation, sp.value)) AS transformedStandardDeviation
+      FROM setup_points
+      INNER JOIN chart ON setup_points.chartName = chart.chartName
+      GROUP BY setup_points.chartName, chart.transformation;
+    `,
+    createChartParametersView: `
+      CREATE TEMP VIEW IF NOT EXISTS
+        chart_parameters
+      SELECT 
+        c.dataName, 
+        c.chartType, 
+        c.aggregationInterval,
+        (
+          SELECT 
+            s.setupStartTime, 
+            s.setupEndTime 
+          FROM setup s
+          WHERE s.chartName = c.chartName
+          ORDER BY s.id
+          LIMIT 1
+        )
+      FROM chart c
+      JOIN transformations t ON c.chartName = t.chartName`,
+    createCusumView: `
+      CREATE TEMP VIEW IF NOT EXISTS
+        cusum
+      SELECT 
+        id, 
+        sum(transform(transformation, value) - transformedMean) OVER (
+          PARTITION BY chartName 
+          ROWS UNBOUNDED PRECEDING
+        ) AS transformedCusum,
+        reverseTransform(transformation, transformedCusum) AS cusum
+      FROM chart_data
+      INNER JOIN chart_parameters ON chart_parameters.dataName = chart_data.dataName
+      INNER JOIN chart_summary ON chartName
+      WHERE 
+        time > setupStartTime
+      ORDER BY time, id;
+    `
+  }
+
+  private readonly SQL = {
     insertObservation: `
       INSERT INTO chart_data (time, value, dataName) VALUES (?, ?, ?);`,
     getEarliestDataTime: `
@@ -97,33 +190,47 @@ export class ChartDb {
     insertSetup: `
       INSERT INTO setup (chartName, setupStartTime, setupEndTime, creationTime) VALUES (:chartName, :setupStartTime, :setupEndTime, :creationTime);`,
     getSetup: `
-      SELECT setupStartTime, setupEndTime, creationTime FROM setup WHERE chartName = :chartName ORDER BY id DESC LIMIT 1;`,
+      SELECT * FROM latest_setup WHERE chartName = :chartName LIMIT 1;`,
     initializeChart: `
       INSERT OR REPLACE INTO chart (chartName, chartType, dataName, aggregationInterval) VALUES (:chartName, :chartType, :dataName, :aggregationInterval);`,
-    getChartParameters: `
-      SELECT dataName, chartType, aggregationInterval FROM chart WHERE chartName = ? LIMIT 1;`,
     getAvailableCharts: `
       SELECT DISTINCT chartName FROM chart ORDER BY chartName;`,
+    getChartParameters: `
+      SELECT * FROM chart_parameters WHERE chartName = :chartName`,
     getChartPoints: `
-      SELECT chart_data.id, time, value, GROUP_CONCAT(chart_annotations.annotation) AS annotations
+      SELECT 
+        chart_data.id, 
+        time, 
+        value, 
+        transformedValue as transform(transformation, value),
+        GROUP_CONCAT(chart_annotations.annotation) AS annotations
       FROM chart_data
       LEFT JOIN chart_annotations ON chart_data.id = chart_annotations.chart_data_id
-      WHERE dataName = ? AND time BETWEEN ? AND ?
+      LEFT JOIN chart_parameters ON chart_data.dataName = chart_parameters.dataName
+      LEFT JOIN cusum ON cusum.id = chart_data.id
+      WHERE chartName = :chartName AND time BETWEEN ? AND ?
       GROUP BY chart_data.id
-      ORDER BY time;`,
-    getCounts: `
-      WITH time_blocks AS (
-        SELECT 
-          FLOOR((time - :start_time) / :block_size) AS block_id,
-          MIN(time) AS block_start,
-          COUNT(*) AS record_count
-        FROM chart_data
-        WHERE time BETWEEN :start_time AND :end_time
-        AND dataName = :data_name
-        GROUP BY block_id
-        HAVING block_start + :block_size <= :end_time
-      )
-      SELECT block_id, block_start, record_count FROM time_blocks;`
+      ORDER BY time, chart_data.id;`,
+    getCusum: `
+      SELECT 
+        *
+      FROM cusum
+      WHERE 
+        chartName = :chartName
+      ORDER BY time, id;
+    `,
+    getIndividualsControlLimits: `
+      SELECT
+        reverseTransform(transformation, transformedMean) AS mean,
+        transformedMean + transformedStandardDeviation * :sigma AS transformedUpperControlLimit,
+        reverseTransform(transformation, transformedUpperControlLimit) AS upperControlLimit,
+        transformedMean - transformedStandardDeviation * :sigma AS transformedLowerControlLimit,
+        reverseTransform(transformation, transformedLowerControlLimit) AS lowerControlLimit
+      FROM
+        chart_summary
+      WHERE
+        chartName = :chartName
+    `
   };
 
   database: Database.Database;
@@ -132,7 +239,6 @@ export class ChartDb {
   insertSetupQuery: Database.Statement;
   getSetupQuery: Database.Statement;
   getChartPointsQuery: Database.Statement;
-  getCountsQuery: Database.Statement;
   getChartParametersQuery: Database.Statement;
   getAvailableChartsQuery: Database.Statement;
   getEarliestDataTimeQuery: Database.Statement;
@@ -147,13 +253,37 @@ export class ChartDb {
     this.database = new Database(databaseName);
     this.database.pragma('journal_mode = WAL');
     this.database.pragma('foreign_keys = ON');
+    
+    this.database.aggregate(
+      'standardDeviation',
+      {
+        start: () => [],
+        step: (array: any[], nextValue) => {array.push(nextValue)},
+        result: (array) => statistics.base.stdev(array.length, 1, array, 1)
+      }
+    );
+    
+    this.database.function('transform', (transformationName, value) => {
+      if (transformationName === "log") {
+        return Math.log10(Number(value));
+      }
+      else {
+        return value
+      }
+    })
 
-    this.database.prepare(this.SQL.createChartDataTable).run();
-    this.database.prepare(this.SQL.createChartAnnotationsTable).run();
-    this.database.prepare(this.SQL.createIndex).run();
-    this.database.prepare(this.SQL.createChartTable).run();
-    this.database.prepare(this.SQL.createSetupTable).run();
-    this.database.prepare(this.SQL.createTransformationsTable).run();
+    this.database.function('reverseTransform', (transformationName, value) => {
+      if (transformationName === "log") {
+        return Math.pow(10, Number(value));
+      }
+      else {
+        return value
+      }
+    })
+
+    for (const key of Object.keys(this.createSQL)) {
+      this.database.prepare(this.createSQL[key]).run();
+    }
 
     this.getEarliestDataTimeQuery = this.database.prepare(this.SQL.getEarliestDataTime);
     this.getLatestDataTimeQuery = this.database.prepare(this.SQL.getLatestDataTime);
@@ -166,7 +296,6 @@ export class ChartDb {
     this.getChartParametersQuery = this.database.prepare(this.SQL.getChartParameters);
     this.getAvailableChartsQuery = this.database.prepare(this.SQL.getAvailableCharts);
     this.getChartPointsQuery = this.database.prepare(this.SQL.getChartPoints);
-    this.getCountsQuery = this.database.prepare(this.SQL.getCounts);
 
     this.addAnnotationQuery = this.database.prepare(
       `INSERT INTO chart_annotations 
@@ -285,101 +414,51 @@ export class ChartDb {
     return this.getChartParametersQuery.get(chartName) as ChartParametersSchema;
   }
 
-  getChartPoints(dataName: string, startTime: number, endTime: number): ChartPointSchema[] {
+  getChartPoints(dataName: string, startTime: number, endTime: number): ChartQueryResultSchema[] {
     return this.getChartPointsQuery.all(
       dataName,
       startTime,
       endTime
-    ) as ChartPointSchema[];
-  }
-
-  getChartCounts(dataName: string, startTime: number, endTime: number, aggregationInterval: number) {
-    const blockCounts: any[] = this.getCountsQuery.all(
-      {
-        data_name: dataName,
-        start_time: startTime,
-        end_time: endTime,
-        block_size: aggregationInterval
-      });
-
-    const counts: ChartPointSchema[] = [];
-
-    for (const blockCount of blockCounts) {
-      const index = blockCount.block_id;
-      counts[index] = { time: blockCount.block_start, value: blockCount.record_count }
-    }
-    for (let ii = 0; ii < counts.length; ii++) {
-      if (!counts[ii]) {
-        counts[ii] = { time: startTime + ii * aggregationInterval, value: 0 };
-      }
-    }
-    return counts;
+    ) as ChartQueryResultSchema[]
+    
   }
 
   getControlLimits(
-    chartParameters: ChartParametersSchema,
-    chartSetup: ChartSetupSchema,
-    chartTransformation: TransformationPair = NULL_TRANSFORMATION
-  ): stats.ControlLimitsType {
-
-    if (chartParameters.chartType === "individuals") {
-      const points = this.getChartPoints(
-        chartParameters.dataName,
-        chartSetup.setupStartTime,
-        chartSetup.setupEndTime
-      );
-      const transformedValues = points.map((point) => chartTransformation.forward(point.value))
-      const transformedStats = stats.individualsChartSetupParams(transformedValues);
-      return {
-        mean: chartTransformation.reverse(transformedStats.mean),
-        upperControlLimit: chartTransformation.reverse(transformedStats.upperControlLimit),
-        lowerControlLimit: chartTransformation.reverse(transformedStats.lowerControlLimit)
-      };
+    chartName: string,
+  ): ControlLimitsType {
+    const result = this.database.prepare(this.SQL.getIndividualsControlLimits).get({
+      chartName: chartName,
+      sigma: 3
+    }) as {
+      mean: number,
+      transformedMean: number,
+      upperControlLimit: number,
+      transformedUpperControlLimit: number,
+      lowerControlLimit: number,
+      transformedLowerControlLimit: number
     }
-    else if (chartParameters.chartType === "counts") {
-      const counts = this.getChartCounts(
-        chartParameters.dataName,
-        chartSetup.setupStartTime,
-        chartSetup.setupEndTime,
-        chartParameters.aggregationInterval
-      );
-      const values = counts.map((count) => count.value);
-      return stats.countsChartSetupParams(values);
+    return {
+      mean: {value: result.mean, transformedValue: result.transformedMean},
+      upperControlLimit: {value: result.upperControlLimit, transformedValue: result.transformedUpperControlLimit},
+      lowerControlLimit: {value: result.lowerControlLimit, transformedValue: result.transformedLowerControlLimit}
     }
-    else {
-      throw new Error(`Invalid chart type: ${chartParameters.chartType}`);
-    }
-
   }
-
-  getChart(chartName: string, startTime?: number, endTime?: number, transformed?: boolean): ChartData {
+  
+  getChart(chartName: string, startTime?: number, endTime?: number): ChartData {
     const parameters = this.getChartParameters(chartName);
     const setup = this.getChartSetup(chartName);
-    const transformations = this.getTransformation(chartName);
-    const limits = setup && this.getControlLimits(parameters, setup, transformations);
-    let points: ChartPointSchema[] = [];
+    const limits = setup && this.getControlLimits(
+      chartName,
+    );
     const dataStartTime = startTime ? startTime : this.getEarliestDataTime(parameters.dataName);
     const dataEndTime = endTime ? endTime : this.getLatestDataTime(parameters.dataName);
-    if (parameters.chartType === "individuals") {
-      points = this.getChartPoints(parameters.dataName, dataStartTime, dataEndTime);
-    }
-    else if (parameters.chartType === "counts") {
-      points = this.getChartCounts(
-        parameters.dataName,
-        dataStartTime,
-        dataEndTime,
-        parameters.aggregationInterval
-      );
-    }
-    else {
-      throw new Error(`Invalid chart type: ${parameters.chartType}`);
-    }
+    const points = this.getChartPoints(parameters.dataName, dataStartTime, dataEndTime);
     
-    const forwardTransformation = transformed ? transformations.forward : NULL_TRANSFORMATION.forward;
-
-    const observations = points.map((point: any) => ({
+    const values = points.map((point) => point.value);
+    const observations: Observation[] = points.map((point): Observation => ({
       id: point.id,
-      value: forwardTransformation(point.value),
+      individualsValue: {value: point.value, transformedValue: point.transformedValue},
+      cusumValue: {value: point.cusum, transformedValue: point.transformedCusum},
       time: point.time,
       isSetup: setup !== undefined && point.time >= setup.setupStartTime && point.time <= setup.setupEndTime,
       annotations: point.annotations ? point.annotations.split(',') : []
@@ -387,11 +466,11 @@ export class ChartDb {
 
     return {
       type: parameters.chartType,
-      controlLimits: limits && {
-        mean: forwardTransformation(limits.mean),
-        upperControlLimit: forwardTransformation(limits.upperControlLimit),
-        lowerControlLimit: forwardTransformation(limits.lowerControlLimit)
+      tests: {
+        runsRandom: stats.runsRandomnessTest(values),
+        ksNormal: stats.normalityTest(values)
       },
+      controlLimits: limits,
       observations: observations
     };
   }

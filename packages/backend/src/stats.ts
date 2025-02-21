@@ -1,27 +1,11 @@
 import statistics from '@stdlib/stats';
 
+import {
+  ConfidenceIntervalTest,
+  PValueTest,
+} from './types/statistics.js';
+
 const kstest = statistics.kstest;
-
-
-export interface ControlLimitsType {
-  mean: number,
-  upperControlLimit: number,
-  lowerControlLimit: number
-};
-
-export function individualsChartSetupParams (
-  setupValues: number[], 
-  boundaryQuantile: number = 0.001
-): ControlLimitsType {
-  const normalDistribution = statistics.base.dists.normal;
-
-  const standardDeviation = statistics.base.stdev(setupValues.length, 1, setupValues, 1);
-
-  const mean = statistics.base.mean(setupValues.length, setupValues, 1);
-  const upperControlLimit = normalDistribution.quantile(1 - boundaryQuantile, mean, standardDeviation);
-  const lowerControlLimit = normalDistribution.quantile(boundaryQuantile, mean, standardDeviation);
-  return {mean: mean, upperControlLimit: upperControlLimit, lowerControlLimit: lowerControlLimit};
-}
 
 export function countsChartSetupParams (
   setupValues: number[], 
@@ -40,7 +24,7 @@ export function countsChartSetupParams (
 export function normalityTest (
   values: number[],
   alpha: number = 0.001
-) {
+): PValueTest {
   const sampleMean = statistics.base.mean(values.length, values, 1);
   const sampleStandardDeviation = statistics.base.stdev(values.length, 1, values, 1);
   return kstest(
@@ -64,8 +48,8 @@ export function sampleMedian (
 
 export function runsRandomnessTest (
   values: number[],
-  boundaryQuantile: 0.001
-) {
+  boundaryQuantile: number = 0.001
+): ConfidenceIntervalTest {
   const median = sampleMedian(values);
   
   const signs = values
@@ -100,8 +84,8 @@ export function runsRandomnessTest (
   const maximumExpectedRuns = normalDistribution.quantile(1 - boundaryQuantile, mean, standardDeviation);
   
   return {
-    totalRuns: totalRuns,
-    lowerRunsLimit: minumumExpectedRuns,
-    upperRunsLimit: maximumExpectedRuns
+    statistic: totalRuns,
+    lower: minumumExpectedRuns,
+    upper: maximumExpectedRuns
   };
 }
