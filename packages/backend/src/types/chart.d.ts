@@ -1,25 +1,23 @@
 import {
   ConfidenceIntervalTest,
-  ControlLimitsType,
   PValueTest,
 } from './statistics.js';
 
 export type ChartType = "individuals" | "counts";
 export interface ControlLimitsType {
-  mean: ChartValue,
-  upperControlLimit: ChartValue,
-  lowerControlLimit: ChartValue
-};
-
-export interface ChartValue {
-  value: number,
-  transformedValue: number
+  individualsMean: number,
+  upperIndividualsLimit: number,
+  lowerIndividualsLimit: number,
+  cusumLimit: number
 }
 
 export interface Observation {
   id: number;
-  individualsValue: ChartValue;
-  cusumValue?: ChartValue;
+  individualsValue: number;
+  cusum?: {
+    upperStatistic: number,
+    lowerStatistic: number
+  };
   time: number;
   isSetup: boolean;
   annotations: string[];

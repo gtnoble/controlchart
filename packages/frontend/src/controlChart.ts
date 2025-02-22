@@ -115,11 +115,19 @@ async function updateChartDropdown(): Promise<void> {
 
   let currentChartType: 'control' | 'histogram' = 'control';
   let isTransformedData = false;
+  let showCusum = true;
 
-  // Add toggle handler
+  // Add toggle handlers
   document.getElementById('dataTransformToggle')?.addEventListener('change', async (e) => {
     isTransformedData = (e.target as HTMLInputElement).checked;
-    const data = await getData(currentChartType, isTransformedData);
+    const data = await getData(currentChartType, isTransformedData, showCusum);
+    chart.data = data;
+    chart.update();
+  });
+
+  document.getElementById('cusumToggle')?.addEventListener('change', async (e) => {
+    showCusum = (e.target as HTMLInputElement).checked;
+    const data = await getData(currentChartType, isTransformedData, showCusum);
     chart.data = data;
     chart.update();
   });
@@ -127,7 +135,7 @@ async function updateChartDropdown(): Promise<void> {
   // Initialize chart
   let chart = new Chart(chartElement, {
     type: 'line',
-    data: await getData(currentChartType),
+    data: await getData(currentChartType, isTransformedData, showCusum),
     options: {
       interaction: {
         mode: 'nearest',
@@ -227,7 +235,7 @@ async function updateChartDropdown(): Promise<void> {
     chart.destroy();
     chart = new Chart(chartElement, {
       type: currentChartType === 'histogram' ? 'bar' : 'line',
-      data: await getData(currentChartType),
+      data: await getData(currentChartType, isTransformedData, showCusum),
       options: {
         responsive: true,
         plugins: {
@@ -300,27 +308,29 @@ function createHistogramData(observations: Point[], binCount: number | 'auto' = 
 /**
  * Gets chart data based on the current chart type
  * @param chartType Type of chart to display
+ * @param transformed Whether to use transformed data
+ * @param showCusum Whether to show CUSUM data
  * @returns Chart data including datasets and labels
  */
-async function getData(chartType: 'control' | 'histogram', transformed = false): Promise<{ datasets: ChartDataset[]; labels: string[] }> {
+async function getData(chartType: 'control' | 'histogram', transformed = false, showCusum = true): Promise<{ datasets: ChartDataset[]; labels: string[] }> {
   const url = transformed ? TRANSFORMED_DATA_URL : DATA_URL;
   const chartData: ChartData = (await axios.get(url)).data;
 
   const observations = chartData.observations.map(observation => ({
     x: observation.time,
-    y: observation.value,
+    y: observation.individualsValue,
     id: observation.id,
     annotations: observation.annotations
   }));
   const setupPoints = chartData.observations.map(observation => ({
     x: observation.time,
-    y: observation.isSetup ? observation.value : NaN,
+    y: observation.isSetup ? observation.individualsValue : NaN,
     id: observation.id,
     annotations: observation.annotations
   })) as Point[];
   const monitoredPoints = chartData.observations.map(observation => ({
     x: observation.time,
-    y: !observation.isSetup ? observation.value : NaN,
+    y: !observation.isSetup ? observation.individualsValue : NaN,
     id: observation.id,
     annotations: observation.annotations
   })) as Point[];
@@ -335,9 +345,9 @@ async function getData(chartType: 'control' | 'histogram', transformed = false):
 
   let controlLimitsDatasets: ChartDataset[] = [];
   if (chartData.controlLimits) {
-    const upperControlLimits = makeEdgePoints(chartData.controlLimits.upperControlLimit, observations);
-    const lowerControlLimits = makeEdgePoints(chartData.controlLimits.lowerControlLimit, observations);
-    const mean = makeEdgePoints(chartData.controlLimits.mean, observations);
+    const upperControlLimits = makeEdgePoints(chartData.controlLimits.upperIndividualsLimit, observations);
+    const lowerControlLimits = makeEdgePoints(chartData.controlLimits.lowerIndividualsLimit, observations);
+    const mean = makeEdgePoints(chartData.controlLimits.individualsMean, observations);
     controlLimitsDatasets = [
       {
         label: "Mean",
@@ -387,6 +397,79 @@ async function getData(chartType: 'control' | 'histogram', transformed = false):
       },
       ...controlLimitsDatasets
     ];
+  }
+
+  if (showCusum && chartData.controlLimits) {
+    const upperCusumPoints = makeEdgePoints(chartData.controlLimits.cusumLimit, observations);
+    const lowerCusumPoints = makeEdgePoints(-chartData.controlLimits.cusumLimit, observations);
+
+    const upperCusumStatistic = chartData.observations.map(observation => ({
+      x: observation.time,
+      y: observation.cusum?.upperStatistic ?? NaN,
+      id: observation.id,
+      annotations: observation.annotations
+    })) as Point[];
+
+    const lowerCusumStatistic = chartData.observations.map(observation => ({
+      x: observation.time,
+      y: observation.cusum?.lowerStatistic ?? NaN,
+      id: observation.id,
+      annotations: observation.annotations
+    })) as Point[];
+
+    dataSets.push({
+      label: "Upper CUSUM Statistic",
+      order: 5,
+      data: upperCusumStatistic,
+      borderColor: "#0000FF",
+      backgroundColor: "#0000FF",
+      pointBorderColor: "#0000FF",
+      pointBackgroundColor: "#0000FF",
+      tension: 0,
+      pointStyle: false,
+      spanGaps: false
+    });
+
+    dataSets.push({
+      label: "Lower CUSUM Statistic",
+      order: 6,
+      data: lowerCusumStatistic,
+      borderColor: "#800080",
+      backgroundColor: "#800080",
+      pointBorderColor: "#800080",
+      pointBackgroundColor: "#800080",
+      tension: 0,
+      pointStyle: false,
+      spanGaps: false
+    });
+
+    dataSets.push({
+      label: "Upper CUSUM Limit",
+      order: 7,
+      data: upperCusumPoints,
+      borderColor: "#0000FF",
+      backgroundColor: "#0000FF",
+      pointBorderColor: "#0000FF",
+      pointBackgroundColor: "#0000FF",
+      tension: 0,
+      spanGaps: true,
+      borderDash: [2, 2],
+      pointStyle: false
+    });
+
+    dataSets.push({
+      label: "Lower CUSUM Limit",
+      order: 8,
+      data: lowerCusumPoints,
+      borderColor: "#800080",
+      backgroundColor: "#800080",
+      pointBorderColor: "#800080",
+      pointBackgroundColor: "#800080",
+      tension: 0,
+      spanGaps: true,
+      borderDash: [2, 2],
+      pointStyle: false
+    });
   }
 
   return { datasets: dataSets, labels: labels };

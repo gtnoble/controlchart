@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
+
 import Database from 'better-sqlite3';
+
 import * as stats from './stats.js';
+
 const LOG_TRANSFORMATION_PAIR = {
     forward: (value) => Math.log(value),
     reverse: (value) => Math.exp(value)

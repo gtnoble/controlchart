@@ -10,7 +10,7 @@ const kstest = statistics.kstest;
 export function countsChartSetupParams (
   setupValues: number[], 
   boundaryQuantile: number = 0.001
-): ControlLimitsType {
+): ConfidenceIntervalTest {
   const poissonDistribution = statistics.base.dists.poisson;
   
   const mean = statistics.base.mean(setupValues.length, setupValues, 1);
@@ -18,7 +18,7 @@ export function countsChartSetupParams (
   const upperControlLimit = poissonDistribution.quantile(mean, 1 - boundaryQuantile);
   const lowerControlLimit = poissonDistribution.quantile(mean, boundaryQuantile);
 
-  return {mean: mean, upperControlLimit: upperControlLimit, lowerControlLimit: lowerControlLimit};
+  return {statistic: mean, upper: upperControlLimit, lower: lowerControlLimit};
 }
 
 export function normalityTest (
