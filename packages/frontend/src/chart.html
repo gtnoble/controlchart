@@ -28,6 +28,7 @@
               <select id="chartType" class="form-select">
                 <option value="control">Control Chart</option>
                 <option value="histogram">Histogram</option>
+                <option value="statistics">Statistics</option>
               </select>
               
               <div class="dropdown" id="chart-select-dropdown">
@@ -50,9 +51,14 @@
                 <input type="text" id="chart-range" class="form-control" placeholder="Date Range">
               </div>
               
-              <button id="resetZoom" class="btn btn-outline-secondary">
-                <i class="bi bi-arrows-fullscreen"></i>
-              </button>
+              <div class="btn-group">
+                <button id="optimizeZoom" class="btn btn-outline-secondary" title="Optimize vertical zoom">
+                  <i class="bi bi-arrows-collapse"></i>
+                </button>
+                <button id="resetZoom" class="btn btn-outline-secondary" title="Reset zoom">
+                  <i class="bi bi-arrows-fullscreen"></i>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -116,9 +122,56 @@
         </div>
       </div>
 
-      <div class="chart-container">
+      <!-- Chart View -->
+      <div id="chart-view" class="chart-container">
         <div style="height: 80vh;">
           <canvas id="control_chart"></canvas>
+        </div>
+      </div>
+
+      <!-- Statistics View -->
+      <div id="statistics-view" class="statistics-container" style="display: none;">
+        <div class="row g-4">
+          <div class="col-md-6">
+            <div class="test-card h-100">
+              <h6 class="mb-3">
+                <i class="bi bi-graph-up me-2"></i>
+                Normality Test (Kolmogorov-Smirnov)
+              </h6>
+              <div class="test-description mb-3">
+                <p class="text-muted mb-2">Tests whether the data follows a normal distribution.</p>
+                <p class="text-muted small">A p-value > 0.05 suggests the data is normally distributed.</p>
+              </div>
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="text-muted">p-value:</span>
+                <span id="normality-pvalue" class="fw-bold">-</span>
+              </div>
+              <div class="d-flex justify-content-between align-items-center">
+                <span class="text-muted">statistic:</span>
+                <span id="normality-statistic" class="fw-bold">-</span>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="test-card h-100">
+              <h6 class="mb-3">
+                <i class="bi bi-shuffle me-2"></i>
+                Randomness Test (Runs Test)
+              </h6>
+              <div class="test-description mb-3">
+                <p class="text-muted mb-2">Tests whether the data points are randomly ordered.</p>
+                <p class="text-muted small">The confidence interval shows the expected range for random data.</p>
+              </div>
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="text-muted">confidence interval:</span>
+                <span id="randomness-pvalue" class="fw-bold">-</span>
+              </div>
+              <div class="d-flex justify-content-between align-items-center">
+                <span class="text-muted">observed runs:</span>
+                <span id="randomness-statistic" class="fw-bold">-</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

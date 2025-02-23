@@ -23,9 +23,8 @@ const DATA_URL = "./data";
 const TRANSFORMED_DATA_URL = "./transformedData";
 const AVAILABLE_CHARTS_URL = "/availableCharts";
 
-/**
- * Chart display configuration
- */
+type ViewType = 'control' | 'histogram' | 'statistics';
+
 /**
  * Chart display configuration
  */
@@ -66,13 +65,11 @@ const STYLES = {
     spanGaps: false
   },
 }
-  ;
+
 const SETUP_STYLE = {
   ...STYLES.MONITORED_STYLE,
   borderDash: [2, 2]
 }
-
-export type ChartType = "individuals" | "counts";
 
 /**
  * Creates an array of points at a consistent y-value for drawing control limits
@@ -122,7 +119,7 @@ async function updateChartDropdown(): Promise<void> {
     throw new Error(`${chartElement} must refer to a canvas tag`);
   }
 
-  let currentChartType: 'control' | 'histogram' = 'control';
+  let currentChartType: ViewType = 'control';
   let isTransformedData = false;
   let showCusum = false;
 
@@ -157,8 +154,10 @@ async function updateChartDropdown(): Promise<void> {
     isTransformedData = checkbox.checked;
     saveCheckboxState(checkbox, 'isTransformedData');
     const data = await getData(currentChartType, isTransformedData, showCusum);
-    chart.data = data;
-    chart.update();
+    if (data) {
+      chart.data = data;
+      chart.update();
+    }
   });
 
   document.getElementById('cusumToggle')?.addEventListener('change', async (e) => {
@@ -166,8 +165,10 @@ async function updateChartDropdown(): Promise<void> {
     showCusum = checkbox.checked;
     saveCheckboxState(checkbox, 'showCusum');
     const data = await getData(currentChartType, isTransformedData, showCusum);
-    chart.data = data;
-    chart.update();
+    if (data) {
+      chart.data = data;
+      chart.update();
+    }
   });
 
   // Add lockXAxis toggle handler
@@ -192,7 +193,7 @@ async function updateChartDropdown(): Promise<void> {
   // Initialize chart
   let chart = new Chart(chartElement, {
     type: 'line',
-    data: await getData(currentChartType, isTransformedData, showCusum),
+    data: await getData(currentChartType, isTransformedData, showCusum) || { datasets: [], labels: [] },
     options: {
       interaction: {
         mode: 'nearest',
@@ -326,6 +327,39 @@ async function updateChartDropdown(): Promise<void> {
     });
   }
 
+  // Optimize vertical zoom
+  document.getElementById('optimizeZoom')?.addEventListener('click', () => {
+    // Find individuals datasets
+    const individualsDatasets = chart.data.datasets.filter(ds => 
+      ds.label === "Monitored Observations" || ds.label === "Setup Observations"
+    );
+    
+    if (individualsDatasets.length === 0) return;
+
+    // Get all valid y values from both datasets
+    const values = individualsDatasets.flatMap(dataset => 
+      dataset.data
+        .map((point: any) => point.y)
+        .filter((y: number) => !isNaN(y))
+    );
+
+    if (values.length === 0) return;
+
+    // Calculate optimal range with 10% padding
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const range = max - min;
+    const padding = range * 0.1;
+
+    // Update y axis scale
+    if (chart.options.scales?.y) {
+      chart.options.scales.y.min = min - padding;
+      chart.options.scales.y.max = max + padding;
+      chart.update();
+      saveZoomState();
+    }
+  });
+
   // Reset zoom
   document.getElementById('resetZoom')?.addEventListener('click', () => {
     // Clear min/max settings to show full dataset
@@ -361,6 +395,9 @@ async function updateChartDropdown(): Promise<void> {
   async function initializeDateRangePicker() {
     let startDate, endDate;
     
+    const pathParts = currentURL.pathname.split('/');
+    const isRecentMode = pathParts.includes('recent');
+    
     if (isSetupMode) {
       // Get setup time range from backend
       try {
@@ -373,9 +410,21 @@ async function updateChartDropdown(): Promise<void> {
       } catch (error) {
         console.error('Failed to fetch setup time range:', error);
       }
+    } else if (isRecentMode) {
+      // For recent data, get the data to determine the time range
+      try {
+        const recentData = await axios.get(DATA_URL);
+        if (recentData.data.observations && recentData.data.observations.length > 0) {
+          const times = recentData.data.observations.map((obs: { time: number }) => obs.time);
+          startDate = new Date(Math.min(...times));
+          endDate = new Date(Math.max(...times));
+        }
+      } catch (error) {
+        console.error('Failed to fetch recent data time range:', error);
+      }
     } else {
       // Use URL parameters for regular chart view
-      const [, , , , currentStartTime, , currentEndTime] = currentURL.pathname.split('/');
+      const [, , , , currentStartTime, , currentEndTime] = pathParts;
       startDate = new Date(Number(currentStartTime));
       endDate = new Date(Number(currentEndTime));
     }
@@ -385,53 +434,101 @@ async function updateChartDropdown(): Promise<void> {
       startDate,
       endDate,
     }, async (start, end) => {
-      const startTime = start.toDate().valueOf().toString();
-      const endTime = end.toDate().valueOf().toString();
-      const updatedPlotURL = `/chart/${chartName}/startTime/${startTime}/endTime/${endTime}/chart`;
-      window.location.replace(updatedPlotURL);
+      if (isRecentMode) {
+        // For recent mode, calculate the count based on the selected time range
+        try {
+          const allData = await axios.get(`/chart/${chartName}/data`);
+          const observations = allData.data.observations;
+          if (observations && observations.length > 0) {
+            const startTime = start.toDate().valueOf();
+            const endTime = end.toDate().valueOf();
+            const count = observations.filter((obs: { time: number }) => 
+              obs.time >= startTime && obs.time <= endTime
+            ).length;
+            window.location.replace(`/chart/${chartName}/recent/${count}/chart`);
+          }
+        } catch (error) {
+          console.error('Failed to calculate count for recent data:', error);
+        }
+      } else {
+        const startTime = start.toDate().valueOf().toString();
+        const endTime = end.toDate().valueOf().toString();
+        const updatedPlotURL = `/chart/${chartName}/startTime/${startTime}/endTime/${endTime}/chart`;
+        window.location.replace(updatedPlotURL);
+      }
     });
   }
 
   jQuery(initializeDateRangePicker);
 
-  // Chart type dropdown handler
-  document.getElementById('chartType')?.addEventListener('change', async (e) => {
-    currentChartType = (e.target as HTMLSelectElement).value as 'control' | 'histogram';
-    // Clear zoom state and destroy old chart
-    localStorage.removeItem('chartZoomState');
-    chart.destroy();
-    
-    // Create new chart with auto-scaling enabled
-    chart = new Chart(chartElement, {
-      type: currentChartType === 'histogram' ? 'bar' : 'line',
-      data: await getData(currentChartType, isTransformedData, showCusum),
-      options: {
-        responsive: true,
-        plugins: {
-          zoom: {
-            pan: {
-              enabled: true,
-              mode: 'xy',
-              onPanComplete: saveZoomState
-            },
-            zoom: {
-              wheel: {
-                enabled: true
-              },
-              pinch: {
-                enabled: true
-              },
-              mode: 'xy',
-              onZoomComplete: saveZoomState
-            }
-          }
-        },
-        scales: {
-          y: { type: 'linear' }
-        }
+  // Function to update view visibility
+  function updateViewVisibility(chartType: ViewType) {
+    const chartView = document.getElementById('chart-view') as HTMLElement;
+    const statisticsView = document.getElementById('statistics-view') as HTMLElement;
+    const chartOptions = document.querySelector('.chart-options') as HTMLElement;
+
+    if (chartView && statisticsView && chartOptions) {
+      if (chartType === 'statistics') {
+        chartView.style.display = 'none';
+        statisticsView.style.display = 'block';
+        chartOptions.style.display = 'none';
+      } else {
+        chartView.style.display = 'block';
+        statisticsView.style.display = 'none';
+        chartOptions.style.display = 'block';
       }
-    });
+    }
+  }
+
+  // Chart type change handler
+  document.getElementById('chartType')?.addEventListener('change', async (e) => {
+    currentChartType = (e.target as HTMLSelectElement).value as ViewType;
+    
+    updateViewVisibility(currentChartType);
+
+    if (currentChartType !== 'statistics') {
+      // Clear zoom state and destroy old chart
+      localStorage.removeItem('chartZoomState');
+      chart.destroy();
+      
+      // Create new chart with auto-scaling enabled
+      chart = new Chart(chartElement, {
+        type: currentChartType === 'histogram' ? 'bar' : 'line',
+        data: await getData(currentChartType, isTransformedData, showCusum) || { datasets: [], labels: [] },
+        options: {
+          responsive: true,
+          plugins: {
+            zoom: {
+              pan: {
+                enabled: true,
+                mode: 'xy',
+                onPanComplete: saveZoomState
+              },
+              zoom: {
+                wheel: {
+                  enabled: true
+                },
+                pinch: {
+                  enabled: true
+                },
+                mode: 'xy',
+                onZoomComplete: saveZoomState
+              }
+            }
+          },
+          scales: {
+            y: { type: 'linear' }
+          }
+        }
+      });
+    } else {
+      // Just fetch data to update statistics
+      await getData(currentChartType, isTransformedData, showCusum);
+    }
   });
+
+  // Initialize view visibility
+  updateViewVisibility(currentChartType);
 })();
 
 /**
@@ -481,9 +578,9 @@ function createHistogramData(observations: Point[], binCount: number | 'auto' = 
  * @param chartType Type of chart to display
  * @param transformed Whether to use transformed data
  * @param showCusum Whether to show CUSUM data
- * @returns Chart data including datasets and labels
+ * @returns Chart data including datasets and labels, or null for statistics view
  */
-async function getData(chartType: 'control' | 'histogram', transformed = false, showCusum = true): Promise<{ datasets: ChartDataset[]; labels: string[] }> {
+async function getData(chartType: ViewType, transformed = false, showCusum = true): Promise<{ datasets: ChartDataset[]; labels: string[] } | null> {
   const url = transformed ? TRANSFORMED_DATA_URL : DATA_URL;
   
   try {
@@ -507,6 +604,13 @@ async function getData(chartType: 'control' | 'histogram', transformed = false, 
       annotations: obs.annotations
     }));
 
+    // Update statistical test displays
+    updateStatisticalTests(chartData);
+
+    if (chartType === 'statistics') {
+      return null;
+    }
+
     if (chartType === 'histogram') {
       const histogramData = createHistogramData(observations);
       return {
@@ -528,6 +632,31 @@ async function getData(chartType: 'control' | 'histogram', transformed = false, 
   } catch (error) {
     console.error('Data fetch failed:', error);
     throw error;
+  }
+}
+
+/**
+ * Updates the statistical test displays with the latest data
+ */
+function updateStatisticalTests(chartData: ChartData) {
+  if (!chartData.tests) return;
+
+  // Update normality test (Kolmogorov-Smirnov test)
+  const normalityPValue = document.getElementById('normality-pvalue');
+  const normalityStatistic = document.getElementById('normality-statistic');
+  if (normalityPValue && normalityStatistic) {
+    normalityPValue.textContent = chartData.tests.ksNormal.pValue.toFixed(4);
+    normalityStatistic.textContent = chartData.tests.ksNormal.statistic.toFixed(4);
+  }
+
+  // Update randomness test (Runs test)
+  const randomnessPValue = document.getElementById('randomness-pvalue');
+  const randomnessStatistic = document.getElementById('randomness-statistic');
+  if (randomnessPValue && randomnessStatistic) {
+    const { lower, upper, statistic } = chartData.tests.runsRandom;
+    // For confidence interval test, we'll show the interval range as p-value
+    randomnessPValue.textContent = `${lower.toFixed(4)} - ${upper.toFixed(4)}`;
+    randomnessStatistic.textContent = statistic.toFixed(4);
   }
 }
 

@@ -148,6 +148,46 @@
   color: var(--text-muted);
 }
 
+/* Views */
+.chart-container,
+.statistics-container {
+  background: white;
+  border-radius: 8px;
+  box-shadow: var(--card-shadow);
+  padding: 1.5rem;
+  margin-top: 0.75rem;
+}
+
+/* Statistical Tests */
+.test-card {
+  background: white;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  padding: 1.5rem;
+  transition: all 0.2s ease;
+  height: 100%;
+}
+
+.test-card:hover {
+  border-color: var(--primary-color);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.test-card h6 {
+  color: var(--text-color);
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+
+.test-card h6 i {
+  color: var(--primary-color);
+}
+
+.test-description {
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
 /* Chart container */
 .chart-container {
   background: white;

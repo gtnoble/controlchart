@@ -296,6 +296,53 @@ interface ChartSetupSchema {
   } as const;
 
   const SQL = {
+    getRecentTransformedChartPoints: `
+      WITH recent_points AS (
+        SELECT 
+          tcp.id,
+          tcp.chartName,
+          tcp.time,
+          tcp.value,
+          tcp.cusumUpperStatistic,
+          tcp.cusumLowerStatistic,
+          tcp.annotations
+        FROM transformed_chart_points tcp
+        WHERE tcp.chartName = :chartName
+        ORDER BY tcp.time DESC, tcp.id DESC
+        LIMIT :count
+      )
+      SELECT *
+      FROM recent_points
+      ORDER BY time ASC, id ASC
+    `,
+    getRecentChartPoints: `
+      WITH recent_points AS (
+        SELECT 
+          tcp.id,
+          tcp.time,
+          tcp.value,
+          tcp.cusumUpperStatistic,
+          tcp.cusumLowerStatistic,
+          tcp.annotations,
+          tcp.chartName,
+          t.transformation
+        FROM transformed_chart_points tcp
+        JOIN chart_parameters cp ON tcp.chartName = cp.chartName
+        LEFT JOIN transformations t ON cp.chartName = t.chartName
+        WHERE tcp.chartName = :chartName
+        ORDER BY tcp.time DESC, tcp.id DESC
+        LIMIT :count
+      )
+      SELECT 
+        id,
+        time,
+        reverseTransform(transformation, value) AS value,
+        reverseTransform(transformation, cusumUpperStatistic) AS cusumUpperStatistic,
+        reverseTransform(transformation, cusumLowerStatistic) AS cusumLowerStatistic,
+        annotations
+      FROM recent_points
+      ORDER BY time ASC, id ASC
+    `,
     insertObservation: `
       INSERT INTO chart_data (time, value, dataName) VALUES (?, ?, ?);`,
     getEarliestDataTime: `
@@ -647,6 +694,44 @@ export class ChartDb {
           endTime: endTime
         }
       ) as ChartQueryResultSchema[]
+  }
+
+  getRecentChartPoints(chartName: string, count: number, isTransformed: boolean = false): ChartQueryResultSchema[] {
+    assert(this.preparedSql.getRecentChartPoints)
+    assert(this.preparedSql.getRecentTransformedChartPoints)
+    return (isTransformed ? this.preparedSql.getRecentTransformedChartPoints : this.preparedSql.getRecentChartPoints)
+      .all({
+        chartName: chartName,
+        count: count
+      }) as ChartQueryResultSchema[]
+  }
+
+  getRecentChart(chartName: string, count: number, isTransformed: boolean = false): ChartData {
+    const parameters = this.getChartParameters(chartName);
+    const setup = this.getChartSetup(chartName);
+    const limits = setup && this.getControlLimits(chartName, isTransformed);
+    
+    const points = this.getRecentChartPoints(chartName, count, isTransformed);
+    
+    const values = points.map((point) => point.value);
+    const observations: Observation[] = points.map((point) => ({
+      id: point.id,
+      individualsValue: point.value,
+      cusum: {upperStatistic: point.cusumUpperStatistic, lowerStatistic: point.cusumLowerStatistic},
+      time: point.time,
+      isSetup: setup !== undefined && point.time >= setup.setupStartTime && point.time <= setup.setupEndTime,
+      annotations: point.annotations ? point.annotations.split(',') : []
+    }));
+
+    return {
+      type: parameters.chartType,
+      tests: {
+        runsRandom: stats.runsRandomnessTest(values),
+        ksNormal: stats.normalityTest(values)
+      },
+      controlLimits: limits,
+      observations: observations
+    };
   }
 
   getControlLimits(

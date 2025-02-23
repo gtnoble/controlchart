@@ -56,9 +56,12 @@ export class Server {
     this.fastify.get('/availableDataNames', this.getAvailableDataNamesHandler.bind(this));
     this.fastify.get('/chart/:chartName', this.getChartHandler.bind(this));
     this.fastify.get('/chart/:chartName/startTime/:startTime/endTime/:endTime/chart', this.serveChartHtmlHandler.bind(this));
+    this.fastify.get('/chart/:chartName/recent/:count/chart', this.serveChartHtmlHandler.bind(this));
     this.fastify.get('/chart/:chartName/startTime/:startTime/endTime/:endTime/:filename', this.serveFileHandler.bind(this));
     this.fastify.get('/chart/:chartName/startTime/:startTime/endTime/:endTime/data', this.getChartDataHandler.bind(this));
     this.fastify.get('/chart/:chartName/startTime/:startTime/endTime/:endTime/transformedData', (request, reply) => this.getChartDataHandler(request, reply, true));
+    this.fastify.get('/chart/:chartName/recent/:count/data', this.getRecentChartDataHandler.bind(this));
+    this.fastify.get('/chart/:chartName/recent/:count/transformedData', (request, reply) => this.getRecentChartDataHandler(request, reply, true));
     this.fastify.post('/chart/:chartName/startTime/:startTime/endTime/:endTime/setSetup', this.setChartSetupHandler.bind(this));
     this.fastify.get('/chart/:chartName/setup/data', (request, reply) => this.getChartSetupPointsHandler(request, reply, false));
     this.fastify.get('/chart/:chartName/setup/transformedData', (request, reply) => this.getChartSetupPointsHandler(request, reply, true));
@@ -147,6 +150,22 @@ export class Server {
       return reply.sendFile(filename);
     } catch (error) {
       reply.code(500).send({ error: 'Failed to serve file' });
+    }
+  }
+
+  private async getRecentChartDataHandler(request: any, reply: any, transformed: boolean = false) {
+    try {
+      const params = request.params as { chartName: string; count: string };
+      const chartName = params.chartName;
+      const count = parseInt(params.count, 10);
+
+      if (isNaN(count) || count <= 0) {
+        return reply.code(400).send({ error: 'Count must be a positive number' });
+      }
+
+      return this.database.getRecentChart(chartName, count, transformed);
+    } catch (error) {
+      reply.code(500).send({ error: 'Failed to get recent chart data' });
     }
   }
 

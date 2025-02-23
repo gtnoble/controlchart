@@ -1,12 +1,6 @@
 
-create a 'last n points' backend endpoint
 create a 'last t time' backend endpoint
-Write pino hooks to send error/warning log counts to backend
-Write fastify plugin to send request failure counts to backend
-add a button that sets the zoom level to the indivduals chart range.
 add graceful handling of empty charts table
-add graph view randomness Test
-add graph view distribution test
 display view point count in UI
 add EWMA chart
 Have setup interval creation match zoom level
