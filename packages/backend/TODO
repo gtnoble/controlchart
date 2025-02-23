@@ -1,17 +1,15 @@
-Switching charts should preserve the time window
-Provide "view all data" link
-Provide "view setup" link
-Have setup interval creation match zoom level
-Have calendar match zoom level
+
+create an endpoint for adding a data point
+create a 'last n points' backend endpoint
+create a 'last t time' backend endpoint
+Write pino hooks to send error/warning log counts to backend
+Write fastify plugin to send request failure counts to backend
+add a button that sets the zoom level to the indivduals chart range.
 add graceful handling of empty charts table
 add graph view randomness Test
 add graph view distribution test
+display view point count in UI
+add EWMA chart
+Have setup interval creation match zoom level
 add autocorrelation mode
 add list dataName cli option
-display view point count in UI
-display chart name on page
-display standard deviation on page
-
-create a 'last n points' backend endpoint
-add EWMA chart
-mark annotated points with a color

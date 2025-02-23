@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Control Chart Selection</title>
+    <link rel="stylesheet" type="text/css" href="chart.css" />
+    <link rel="stylesheet" type="text/css" href="landing.css" />
+  </head>
+  <body>
+    <div class="container mt-5">
+      <div class="row justify-content-center">
+        <div class="col-md-8">
+          <div class="card">
+            <div class="card-header">
+              <h2 class="text-center">Control Chart</h2>
+            </div>
+            <div class="card-body text-center">
+              <p class="card-text mb-4">View and analyze process control data with statistical control limits.</p>
+              <div class="form-group mb-4">
+                <label for="chartSelect" class="form-label">Select Chart</label>
+                <select id="chartSelect" class="form-select"></select>
+              </div>
+              <button id="viewChart" class="btn btn-primary" disabled>View Chart</button>
+              <a href="create-chart.html" class="btn btn-success ms-2">Create New Chart</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Fetch available charts and populate dropdown
+      async function loadCharts() {
+        try {
+          const response = await fetch('/availableCharts');
+          const charts = await response.json();
+          const select = document.getElementById('chartSelect');
+          const viewButton = document.getElementById('viewChart');
+          
+          charts.forEach(chart => {
+            const option = document.createElement('option');
+            option.value = chart;
+            option.textContent = chart;
+            select.appendChild(option);
+          });
+
+          // Enable view button if charts are available
+          if (charts.length > 0) {
+            viewButton.disabled = false;
+          }
+
+          // Add click handler for view button
+          viewButton.addEventListener('click', () => {
+            const selectedChart = select.value;
+            if (selectedChart) {
+              window.location.href = `/chart/${selectedChart}`;
+            }
+          });
+        } catch (error) {
+          console.error('Failed to load charts:', error);
+        }
+      }
+
+      // Load charts when page loads
+      document.addEventListener('DOMContentLoaded', loadCharts);
+    </script>
+  </body>
+</html>

@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Create New Control Chart</title>
+    <link rel="stylesheet" type="text/css" href="chart.css" />
+    <link rel="stylesheet" type="text/css" href="landing.css" />
+  </head>
+  <body>
+    <div class="container mt-5">
+      <div class="row justify-content-center">
+        <div class="col-md-8">
+          <div class="card">
+            <div class="card-header">
+              <h2 class="text-center">Create New Control Chart</h2>
+            </div>
+            <div class="card-body">
+              <form id="createChartForm">
+                <div class="form-group mb-3">
+                  <label for="chartName" class="form-label">Chart Name</label>
+                  <input type="text" class="form-control" id="chartName" required>
+                </div>
+                <div class="form-group mb-3">
+                  <label for="dataName" class="form-label">Data Name</label>
+                  <select class="form-select" id="dataName" required>
+                    <option value="">Select a data name</option>
+                  </select>
+                </div>
+                <div class="form-group mb-3">
+                  <label for="chartType" class="form-label">Chart Type</label>
+                  <select class="form-select" id="chartType" required>
+                    <option value="individuals">Individuals</option>
+                    <option value="counts">Counts</option>
+                  </select>
+                </div>
+                <div class="form-group mb-3">
+                  <label for="aggregationInterval" class="form-label">Aggregation Interval (seconds)</label>
+                  <input type="number" class="form-control" id="aggregationInterval" required min="1">
+                </div>
+                <div class="form-group mb-4">
+                  <label for="transformation" class="form-label">Transformation (optional)</label>
+                  <select class="form-select" id="transformation">
+                    <option value="">None</option>
+                    <option value="log">Logarithmic</option>
+                  </select>
+                </div>
+                <div class="text-center">
+                  <button type="submit" class="btn btn-primary">Create Chart</button>
+                  <a href="index.html" class="btn btn-secondary ms-2">Back to Charts</a>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Fetch available data names and populate dropdown
+      async function loadDataNames() {
+        try {
+          const response = await fetch('/availableDataNames');
+          const dataNames = await response.json();
+          const select = document.getElementById('dataName');
+          
+          dataNames.forEach(name => {
+            const option = document.createElement('option');
+            option.value = name;
+            option.textContent = name;
+            select.appendChild(option);
+          });
+        } catch (error) {
+          console.error('Failed to load data names:', error);
+          alert('Failed to load available data names. Please try again later.');
+        }
+      }
+
+      // Load data names when page loads
+      document.addEventListener('DOMContentLoaded', loadDataNames);
+
+      document.getElementById('createChartForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const chartName = document.getElementById('chartName').value;
+        const data = {
+          dataName: document.getElementById('dataName').value,
+          chartType: document.getElementById('chartType').value,
+          aggregationInterval: parseInt(document.getElementById('aggregationInterval').value),
+          transformation: document.getElementById('transformation').value || undefined
+        };
+
+        try {
+          const response = await fetch(`/createChart/${chartName}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+          });
+
+          if (response.ok) {
+            alert('Chart created successfully!');
+            window.location.href = 'index.html';
+          } else {
+            const error = await response.json();
+            alert(`Failed to create chart: ${error.error}`);
+          }
+        } catch (error) {
+          alert('Failed to create chart. Please try again.');
+          console.error('Error:', error);
+        }
+      });
+    </script>
+  </body>
+</html>

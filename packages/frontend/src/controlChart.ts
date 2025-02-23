@@ -4,12 +4,18 @@ import 'bootstrap';
 import axios from 'axios';
 import Chart, {
   ChartDataset,
-  Point,
+  Point as ChartPoint,
+  ScriptableContext,
 } from 'chart.js/auto';
 import zoomPlugin from 'chartjs-plugin-zoom';
 import jQuery from 'jquery';
 
 import type { ChartData } from '../../backend/src/types/chart';
+
+interface Point extends ChartPoint {
+  id?: number;
+  annotations?: string[];
+}
 
 Chart.register(zoomPlugin);
 
@@ -57,7 +63,6 @@ const STYLES = {
     pointBorderColor: CONFIG.COLORS.OBSERVATION,
     pointBackgroundColor: CONFIG.COLORS.OBSERVATION,
     tension: 0,
-    pointStyle: false,
     spanGaps: false
   },
 }
@@ -76,7 +81,11 @@ export type ChartType = "individuals" | "counts";
  * @returns Array of points with matching x-values from observations and consistent y-value
  */
 function makeEdgePoints(value: number, observations: { x: number, y: number }[]): Point[] {
-  return observations.map((point) => ({ x: point.x, y: value }));
+  return observations.map((point) => ({ 
+    x: point.x, 
+    y: value,
+    annotations: [] 
+  }));
 }
 
 /**
@@ -170,6 +179,16 @@ async function updateChartDropdown(): Promise<void> {
     updateZoomMode();
   });
 
+  // Get current chart name from URL
+  const currentURL = new URL(window.location.href);
+  const [, , chartName] = currentURL.pathname.split('/');
+
+  // Update chart dropdown button text with current chart name
+  const dropdownButton = document.querySelector('#chart-select-dropdown .btn');
+  if (dropdownButton) {
+    dropdownButton.textContent = chartName;
+  }
+
   // Initialize chart
   let chart = new Chart(chartElement, {
     type: 'line',
@@ -217,8 +236,8 @@ async function updateChartDropdown(): Promise<void> {
         tooltip: {
           callbacks: {
             afterBody: (context) => {
-              const point = context[0].raw as any;
-              return point?.annotations ? [`Annotation: ${point.annotations}`] : [];
+              const point = context[0].raw as Point;
+              return point?.annotations?.map(annotation => `Annotation: ${annotation}`) ?? [];
             }
           }
         }
@@ -230,27 +249,51 @@ async function updateChartDropdown(): Promise<void> {
   function initChart() {
     const savedState = localStorage.getItem('chartZoomState');
     if (savedState) {
-      const { zoom, pan } = JSON.parse(savedState);
-      if (chart.options.plugins?.zoom) {
-        chart.options.plugins.zoom.zoom = zoom;
-        chart.options.plugins.zoom.pan = pan;
+      const state = JSON.parse(savedState);
+      if (state.scales) {
+        const xAxis = chart.scales.x;
+        const yAxis = chart.scales.y;
+        xAxis.options.min = state.scales.x.min;
+        xAxis.options.max = state.scales.x.max;
+        yAxis.options.min = state.scales.y.min;
+        yAxis.options.max = state.scales.y.max;
+        chart.update();
       }
-      chart.update();
     }
   }
 
-  // Save zoom state periodically
+  // Save zoom state when zooming or panning completes
   function saveZoomState() {
-    const zoom = chart.options.plugins?.zoom?.zoom;
-    const pan = chart.options.plugins?.zoom?.pan;
-    if (zoom && pan) {
-      localStorage.setItem('chartZoomState', JSON.stringify({ zoom, pan }));
-    }
+    const scales = chart.scales;
+    const state = {
+      scales: {
+        x: {
+          min: scales.x.min,
+          max: scales.x.max
+        },
+        y: {
+          min: scales.y.min,
+          max: scales.y.max
+        }
+      }
+    };
+    localStorage.setItem('chartZoomState', JSON.stringify(state));
   }
 
-  // Initialize chart and load state
-  initChart();
-  setInterval(saveZoomState, 5000); // Save every 5 seconds
+  // Initialize chart and set up zoom/pan handlers
+  if (chart.options.plugins?.zoom) {
+    chart.options.plugins.zoom.zoom = {
+      ...chart.options.plugins.zoom.zoom,
+      onZoomComplete: saveZoomState
+    };
+    chart.options.plugins.zoom.pan = {
+      ...chart.options.plugins.zoom.pan,
+      onPanComplete: saveZoomState
+    };
+  }
+  
+  // Initialize chart with saved state after a short delay to ensure proper rendering
+  setTimeout(initChart, 100);
 
   const updateZoomMode = () => {
     if (chart.options.plugins && chart.options.plugins.zoom && chart.options.plugins.zoom.pan) {
@@ -285,30 +328,80 @@ async function updateChartDropdown(): Promise<void> {
 
   // Reset zoom
   document.getElementById('resetZoom')?.addEventListener('click', () => {
-    chart.resetZoom();
+    // Clear min/max settings to show full dataset
+    if (chart.options.scales?.x) {
+      chart.options.scales.x.min = undefined;
+      chart.options.scales.x.max = undefined;
+    }
+    if (chart.options.scales?.y) {
+      chart.options.scales.y.min = undefined;
+      chart.options.scales.y.max = undefined;
+    }
+    chart.update();
+    localStorage.removeItem('chartZoomState');
+  });
+
+  // Load setup data
+  document.getElementById('loadSetup')?.addEventListener('click', () => {
+    const currentURL = new URL(window.location.href);
+    const [, , chartName] = currentURL.pathname.split('/');
+    window.location.href = `/chart/${chartName}/setup/chart`;
+  });
+
+  // Load all data
+  document.getElementById('loadAllData')?.addEventListener('click', () => {
+    const currentURL = new URL(window.location.href);
+    const [, , chartName] = currentURL.pathname.split('/');
+    window.location.href = `/chart/${chartName}`;
   });
 
   // Date range picker
-  const currentURL = new URL(window.location.href);
-  const [, , chartName, , currentStartTime, , currentEndTime] = currentURL.pathname.split('/');
+  const isSetupMode = currentURL.pathname.includes('/setup/chart');
+  
+  async function initializeDateRangePicker() {
+    let startDate, endDate;
+    
+    if (isSetupMode) {
+      // Get setup time range from backend
+      try {
+        const setupData = await axios.get(`/chart/${chartName}/setup/data`);
+        if (setupData.data.observations && setupData.data.observations.length > 0) {
+          const times = setupData.data.observations.map((obs: { time: number }) => obs.time);
+          startDate = new Date(Math.min(...times));
+          endDate = new Date(Math.max(...times));
+        }
+      } catch (error) {
+        console.error('Failed to fetch setup time range:', error);
+      }
+    } else {
+      // Use URL parameters for regular chart view
+      const [, , , , currentStartTime, , currentEndTime] = currentURL.pathname.split('/');
+      startDate = new Date(Number(currentStartTime));
+      endDate = new Date(Number(currentEndTime));
+    }
 
-  jQuery(() => {
     jQuery("#chart-range").daterangepicker({
       timePicker: true,
-      startDate: new Date(Number(currentStartTime)),
-      endDate: new Date(Number(currentEndTime)),
+      startDate,
+      endDate,
     }, async (start, end) => {
       const startTime = start.toDate().valueOf().toString();
       const endTime = end.toDate().valueOf().toString();
       const updatedPlotURL = `/chart/${chartName}/startTime/${startTime}/endTime/${endTime}/chart`;
       window.location.replace(updatedPlotURL);
     });
-  });
+  }
+
+  jQuery(initializeDateRangePicker);
 
   // Chart type dropdown handler
   document.getElementById('chartType')?.addEventListener('change', async (e) => {
     currentChartType = (e.target as HTMLSelectElement).value as 'control' | 'histogram';
+    // Clear zoom state and destroy old chart
+    localStorage.removeItem('chartZoomState');
     chart.destroy();
+    
+    // Create new chart with auto-scaling enabled
     chart = new Chart(chartElement, {
       type: currentChartType === 'histogram' ? 'bar' : 'line',
       data: await getData(currentChartType, isTransformedData, showCusum),
@@ -319,6 +412,7 @@ async function updateChartDropdown(): Promise<void> {
             pan: {
               enabled: true,
               mode: 'xy',
+              onPanComplete: saveZoomState
             },
             zoom: {
               wheel: {
@@ -327,7 +421,8 @@ async function updateChartDropdown(): Promise<void> {
               pinch: {
                 enabled: true
               },
-              mode: 'xy'
+              mode: 'xy',
+              onZoomComplete: saveZoomState
             }
           }
         },
@@ -390,109 +485,170 @@ function createHistogramData(observations: Point[], binCount: number | 'auto' = 
  */
 async function getData(chartType: 'control' | 'histogram', transformed = false, showCusum = true): Promise<{ datasets: ChartDataset[]; labels: string[] }> {
   const url = transformed ? TRANSFORMED_DATA_URL : DATA_URL;
-  const chartData: ChartData = (await axios.get(url)).data;
+  
+  try {
+    const response = await axios.get(url);
+    const chartData: ChartData = response.data;
+    
+    if (!chartData.observations || !chartData.observations.length) {
+      throw new Error(`No observations found in data response from ${url}`);
+    }
+    
+    console.log('Data fetch success:', {
+      url,
+      dataSize: chartData.observations.length,
+      firstDataPoint: chartData.observations[0]
+    });
+    
+    const observations = chartData.observations.map(obs => ({
+      x: obs.time,
+      y: obs.individualsValue,
+      id: obs.id,
+      annotations: obs.annotations
+    }));
 
-  const observations = chartData.observations.map(observation => ({
-    x: observation.time,
-    y: observation.individualsValue,
-    id: observation.id,
-    annotations: observation.annotations
-  }));
-  const setupPoints = chartData.observations.map(observation => ({
-    x: observation.time,
-    y: observation.isSetup ? observation.individualsValue : NaN,
-    id: observation.id,
-    annotations: observation.annotations
-  })) as Point[];
-  const monitoredPoints = chartData.observations.map(observation => ({
-    x: observation.time,
-    y: !observation.isSetup ? observation.individualsValue : NaN,
-    id: observation.id,
-    annotations: observation.annotations
-  })) as Point[];
-
-  let labels: string[];
-  if (chartType === 'histogram') {
-    const { labels: binLabels } = createHistogramData(observations);
-    labels = binLabels;
-  } else {
-    labels = observations.map((obs: Point) => new Date(obs.x).toLocaleString());
+    if (chartType === 'histogram') {
+      const histogramData = createHistogramData(observations);
+      return {
+        datasets: [{
+          label: "Histogram Data",
+          data: histogramData.data,
+          backgroundColor: CONFIG.COLORS.OBSERVATION,
+          borderColor: CONFIG.COLORS.OBSERVATION,
+          borderWidth: 1
+        }],
+        labels: histogramData.labels
+      };
+    }
+    
+    return {
+      datasets: createChartDatasets(chartData, showCusum),
+      labels: observations.map(obs => new Date(obs.x).toLocaleString())
+    };
+  } catch (error) {
+    console.error('Data fetch failed:', error);
+    throw error;
   }
+}
 
-  let controlLimitsDatasets: ChartDataset[] = [];
+function createLabels(observations: { time: number }[]): string[] {
+  return observations.map(obs => new Date(obs.time).toLocaleString());
+}
+
+function createChartDatasets(chartData: ChartData, showCusum: boolean): ChartDataset[] {
+  const observations = chartData.observations.map(obs => ({
+    x: obs.time,
+    y: obs.individualsValue,
+    id: obs.id,
+    annotations: obs.annotations
+  }));
+  
+  const setupPoints = chartData.observations.map(obs => ({
+    x: obs.time,
+    y: obs.isSetup ? obs.individualsValue : NaN,
+    id: obs.id,
+    annotations: obs.annotations
+  })) as Point[];
+
+  const monitoredPoints = chartData.observations.map(obs => ({
+    x: obs.time,
+    y: !obs.isSetup ? obs.individualsValue : NaN,
+    id: obs.id,
+    annotations: obs.annotations
+  })) as Point[];
+
+  const datasets: ChartDataset[] = [
+    {
+      label: "Monitored Observations",
+      order: 0,
+      data: monitoredPoints,
+      ...STYLES.MONITORED_STYLE,
+      pointStyle: (ctx: ScriptableContext<"line">) => {
+        const point = monitoredPoints[ctx.dataIndex] as Point;
+        return point?.annotations?.length ? 'circle' : false;
+      },
+      pointRadius: (ctx: ScriptableContext<"line">) => {
+        const point = monitoredPoints[ctx.dataIndex] as Point;
+        return point?.annotations?.length ? 6 : 0;
+      },
+      pointBackgroundColor: (ctx: ScriptableContext<"line">) => {
+        const point = monitoredPoints[ctx.dataIndex] as Point;
+        return point?.annotations?.length ? '#FFFF00' : CONFIG.COLORS.OBSERVATION;
+      },
+      pointBorderColor: (ctx: ScriptableContext<"line">) => {
+        const point = monitoredPoints[ctx.dataIndex] as Point;
+        return point?.annotations?.length ? '#FFFF00' : CONFIG.COLORS.OBSERVATION;
+      }
+    },
+    {
+      label: "Setup Observations",
+      order: 1,
+      data: setupPoints,
+      ...SETUP_STYLE,
+      pointStyle: (ctx: ScriptableContext<"line">) => {
+        const point = setupPoints[ctx.dataIndex] as Point;
+        return point?.annotations?.length ? 'circle' : false;
+      },
+      pointRadius: (ctx: ScriptableContext<"line">) => {
+        const point = setupPoints[ctx.dataIndex] as Point;
+        return point?.annotations?.length ? 6 : 0;
+      },
+      pointBackgroundColor: (ctx: ScriptableContext<"line">) => {
+        const point = setupPoints[ctx.dataIndex] as Point;
+        return point?.annotations?.length ? '#FFFF00' : CONFIG.COLORS.OBSERVATION;
+      },
+      pointBorderColor: (ctx: ScriptableContext<"line">) => {
+        const point = setupPoints[ctx.dataIndex] as Point;
+        return point?.annotations?.length ? '#FFFF00' : CONFIG.COLORS.OBSERVATION;
+      }
+    }
+  ];
+
   if (chartData.controlLimits) {
     const upperControlLimits = makeEdgePoints(chartData.controlLimits.upperIndividualsLimit, observations);
     const lowerControlLimits = makeEdgePoints(chartData.controlLimits.lowerIndividualsLimit, observations);
     const mean = makeEdgePoints(chartData.controlLimits.individualsMean, observations);
-    controlLimitsDatasets = [
-      {
-        label: "Mean",
-        order: 2,
-        data: mean,
-        ...STYLES.MEAN_STYLE
-      },
-      {
-        label: "Upper Control Limit",
-        order: 3,
-        data: upperControlLimits,
-        ...STYLES.CONTROL_LIMIT_STYLE
-      },
-      {
-        label: "Lower Control Limit",
-        order: 4,
-        data: lowerControlLimits,
-        ...STYLES.CONTROL_LIMIT_STYLE
-      }
-    ];
-  }
 
-  let dataSets: ChartDataset[];
-  if (chartType === 'histogram') {
-    const histogramData = createHistogramData(observations);
-    dataSets = [
-      {
-        label: "Histogram Data",
-        order: 0,
-        data: histogramData.data,
-        ...SETUP_STYLE
-      }
-    ];
-  } else {
-    dataSets = [
-      {
-        label: "Monitored Observations",
-        order: 0,
-        data: monitoredPoints,
-        ...STYLES.MONITORED_STYLE
-      },
-      {
-        label: "Setup Observations",
-        order: 1,
-        data: setupPoints,
-        ...SETUP_STYLE
-      },
-      ...controlLimitsDatasets
-    ];
+    datasets.push({
+      label: "Mean",
+      order: 2,
+      data: mean,
+      ...STYLES.MEAN_STYLE
+    });
+
+    datasets.push({
+      label: "Upper Control Limit",
+      order: 3,
+      data: upperControlLimits,
+      ...STYLES.CONTROL_LIMIT_STYLE
+    });
+
+    datasets.push({
+      label: "Lower Control Limit", 
+      order: 4,
+      data: lowerControlLimits,
+      ...STYLES.CONTROL_LIMIT_STYLE
+    });
   }
 
   if (showCusum && chartData.controlLimits) {
     const upperCusumPoints = makeEdgePoints(chartData.controlLimits.cusumLimit, observations);
 
-    const upperCusumStatistic = chartData.observations.map(observation => ({
-      x: observation.time,
-      y: observation.cusum?.upperStatistic ?? NaN,
-      id: observation.id,
-      annotations: observation.annotations
+    const upperCusumStatistic = chartData.observations.map(obs => ({
+      x: obs.time,
+      y: obs.cusum?.upperStatistic ?? NaN,
+      id: obs.id,
+      annotations: obs.annotations
     })) as Point[];
 
-    const lowerCusumStatistic = chartData.observations.map(observation => ({
-      x: observation.time,
-      y: observation.cusum?.lowerStatistic ?? NaN,
-      id: observation.id,
-      annotations: observation.annotations
+    const lowerCusumStatistic = chartData.observations.map(obs => ({
+      x: obs.time,
+      y: obs.cusum?.lowerStatistic ?? NaN,
+      id: obs.id,
+      annotations: obs.annotations
     })) as Point[];
 
-    dataSets.push({
+    datasets.push({
       label: "Upper CUSUM Statistic",
       order: 5,
       data: upperCusumStatistic,
@@ -505,7 +661,7 @@ async function getData(chartType: 'control' | 'histogram', transformed = false, 
       spanGaps: false
     });
 
-    dataSets.push({
+    datasets.push({
       label: "Lower CUSUM Statistic",
       order: 6,
       data: lowerCusumStatistic,
@@ -518,7 +674,7 @@ async function getData(chartType: 'control' | 'histogram', transformed = false, 
       spanGaps: false
     });
 
-    dataSets.push({
+    datasets.push({
       label: "CUSUM Control Limit",
       order: 7,
       data: upperCusumPoints,
@@ -531,8 +687,7 @@ async function getData(chartType: 'control' | 'histogram', transformed = false, 
       borderDash: [2, 2],
       pointStyle: false
     });
-
   }
 
-  return { datasets: dataSets, labels: labels };
+  return datasets;
 }

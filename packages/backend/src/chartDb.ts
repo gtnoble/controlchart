@@ -170,7 +170,7 @@ interface ChartSetupSchema {
         s.setupEndTime AS setupEndTime
       FROM chart_base cb
       LEFT JOIN latest_setup s ON cb.chartName = s.chartName
-      WHERE s.rn = 1`,
+      WHERE s.rn IS NULL OR s.rn = 1`,
     createCusumParametersView: `
       CREATE TEMP VIEW IF NOT EXISTS
         cusum_parameters
@@ -314,6 +314,9 @@ interface ChartSetupSchema {
       INSERT OR REPLACE INTO chart (chartName, chartType, dataName, aggregationInterval) VALUES (:chartName, :chartType, :dataName, :aggregationInterval);`,
     getAvailableCharts: `
       SELECT DISTINCT chartName FROM chart ORDER BY chartName;`,
+    getAvailableDataNames: `
+      SELECT DISTINCT dataName FROM chart_data ORDER BY dataName;
+    `,
     getChartParameters: `
       SELECT * FROM chart_parameters WHERE chartName = :chartName`,
     getTransformedChartPoints: `
@@ -354,7 +357,7 @@ interface ChartSetupSchema {
           t.transformation
         FROM transformed_chart_points tcp
         JOIN chart_parameters cp ON tcp.chartName = cp.chartName
-        JOIN transformations t ON cp.chartName = t.chartName
+        LEFT JOIN transformations t ON cp.chartName = t.chartName
         WHERE tcp.chartName = :chartName AND tcp.time BETWEEN :startTime AND :endTime
       )
       SELECT 
@@ -386,7 +389,7 @@ interface ChartSetupSchema {
         reverseTransform(t.transformation, tcl.cusumControlLimit) AS cusumControlLimit
       FROM
         transformed_control_limits tcl
-      JOIN transformations t ON tcl.chartName = t.chartName
+      LEFT JOIN transformations t ON tcl.chartName = t.chartName
       WHERE
         tcl.chartName = :chartName
     `,
@@ -510,20 +513,30 @@ export class ChartDb {
 
   }
 
-  saveObservation(observation: { value: number; dataName: string; time: string }) {
-      const sql = `INSERT INTO chart_data (time, value, dataName) VALUES (?, ?, ?)`;
-      const result = this.database.prepare(sql).run(observation.time, observation.value, observation.dataName);
-      return Number(result.lastInsertRowid);
+  saveObservation(observation: { value: number; dataName: string; time?: number; annotations?: string | string[] }) {
+    assert(this.preparedSql.insertObservation)
+    const insertTime = observation.time ? observation.time : Date.now();
+    const result = this.preparedSql.insertObservation.run(insertTime, observation.value, observation.dataName);
+      const id = Number(result.lastInsertRowid);
+      
+      if (typeof observation.annotations === "string") {
+        this.addAnnotation(id, observation.annotations);
+      }
+      else if (observation.annotations instanceof Array) {
+        for (const annotation of observation.annotations) {
+          this.addAnnotation(id, annotation)
+        }
+      }
+      
+      return id;
     };
 
-  addObservation(value: number, dataName: string): number {
+  addObservation(value: number, dataName: string, annotations?: string | string[]): number {
     const unixTime = Date.now();
-    assert(this.preparedSql.insertObservation)
-    const result = this.preparedSql.insertObservation.run(unixTime, value, dataName);
-    return Number(result.lastInsertRowid);
+    return this.saveObservation(
+      {value: value, dataName: dataName, time: unixTime, annotations: annotations}
+    );
   }
-
-
 
   addAnnotation(chartDataId: number, annotation: string) {
     const unixTime = Date.now();
@@ -690,6 +703,11 @@ export class ChartDb {
   getAvailableCharts() {
     assert(this.preparedSql.getAvailableCharts)
     return this.preparedSql.getAvailableCharts.all().map((row: any) => row.chartName);
+  }
+  
+  getAvailableDataNames() {
+    assert(this.preparedSql.getAvailableDataNames)
+    return this.preparedSql.getAvailableDataNames.all().map((row: any) => row.dataName);
   }
 
 }

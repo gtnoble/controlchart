@@ -25,6 +25,6 @@
     "jquery": "^3.7.1",
     "typescript": "^5.7.3"
   },
-  "source": "src/chart.html",
+  "source": ["src/create-chart.html", "src/chart.html", "src/index.html"],
   "type": "module"
 }

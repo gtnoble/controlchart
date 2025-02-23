@@ -23,6 +23,13 @@ interface ObservationRequestBody {
   annotation?: string;
 }
 
+interface CreateChartRequestBody {
+  dataName: string;
+  chartType: "individuals" | "counts";
+  aggregationInterval: number;
+  transformation?: "log";
+}
+
 export class Server {
   private database: ChartDb;
   private fastify: Fastify.FastifyInstance;
@@ -40,17 +47,51 @@ export class Server {
   }
 
   private setupRoutes() {
+    // Redirect root to landing page
+    this.fastify.get('/', (request, reply) => {
+      return reply.redirect('/index.html');
+    });
+
     this.fastify.get('/availableCharts', this.getAvailableChartsHandler.bind(this));
+    this.fastify.get('/availableDataNames', this.getAvailableDataNamesHandler.bind(this));
     this.fastify.get('/chart/:chartName', this.getChartHandler.bind(this));
     this.fastify.get('/chart/:chartName/startTime/:startTime/endTime/:endTime/chart', this.serveChartHtmlHandler.bind(this));
     this.fastify.get('/chart/:chartName/startTime/:startTime/endTime/:endTime/:filename', this.serveFileHandler.bind(this));
     this.fastify.get('/chart/:chartName/startTime/:startTime/endTime/:endTime/data', this.getChartDataHandler.bind(this));
     this.fastify.get('/chart/:chartName/startTime/:startTime/endTime/:endTime/transformedData', (request, reply) => this.getChartDataHandler(request, reply, true));
     this.fastify.post('/chart/:chartName/startTime/:startTime/endTime/:endTime/setSetup', this.setChartSetupHandler.bind(this));
+    this.fastify.get('/chart/:chartName/setup/data', (request, reply) => this.getChartSetupPointsHandler(request, reply, false));
+    this.fastify.get('/chart/:chartName/setup/transformedData', (request, reply) => this.getChartSetupPointsHandler(request, reply, true));
+    this.fastify.get('/chart/:chartName/setup/chart', this.serveChartHtmlHandler.bind(this));
     this.fastify.post('/dataPoint/:dataPointId/annotate', this.addAnnotationHandler.bind(this));
     this.fastify.get('/dataPoint/:dataPointId/annotation', this.getAnnotationHandler.bind(this));
 
     // New endpoint for adding observations
+    this.fastify.post<{ Body: CreateChartRequestBody; Params: { chartName: string } }>('/createChart/:chartName', async (request, reply) => {
+      try {
+        const { chartName } = request.params;
+        const { dataName, chartType, aggregationInterval } = request.body;
+
+        if (!chartName || !dataName || !chartType || aggregationInterval === undefined) {
+          return reply.status(400).send({ error: 'Missing required fields' });
+        }
+
+        if (!["individuals", "counts"].includes(chartType)) {
+          return reply.status(400).send({ error: 'Invalid chart type. Must be "individuals" or "counts"' });
+        }
+
+        this.database.initializeChart(chartName, dataName, chartType, aggregationInterval);
+        
+        if (request.body.transformation) {
+          this.database.setTransformation(chartName, request.body.transformation);
+        }
+        reply.status(201).send({ message: 'Chart created successfully' });
+      } catch (error) {
+        console.error('Error creating chart:', error);
+        reply.status(500).send({ error: 'Failed to create chart' });
+      }
+    });
+
     this.fastify.post<{ Body: ObservationRequestBody }>('/api/observations', async (request, reply) => {
       try {
       const { value, dataName, annotation } = request.body;
@@ -87,6 +128,14 @@ export class Server {
       return this.database.getAvailableCharts();
     } catch (error) {
       reply.code(500).send({ error: 'Failed to get available charts' });
+    }
+  
+  }
+  private async getAvailableDataNamesHandler(request: any, reply: any) {
+    try {
+      return this.database.getAvailableDataNames();
+    } catch (error) {
+      reply.code(500).send({ error: 'Failed to get available data names' });
     }
   }
 
@@ -172,6 +221,26 @@ export class Server {
       reply.send({ annotation });
     } catch (error) {
       reply.status(500).send(error instanceof Error ? error.message : 'Unknown error');
+    }
+  }
+
+  private async getChartSetupPointsHandler(request: any, reply: any, isTransformed: boolean) {
+    try {
+      const params = request.params as ChartParams;
+      const setup = this.database.getChartSetup(params.chartName);
+      
+      if (!setup) {
+        return reply.code(404).send({ error: 'No setup found for this chart' });
+      }
+
+      return this.database.getChart(
+        params.chartName,
+        setup.setupStartTime,
+        setup.setupEndTime,
+        isTransformed
+      );
+    } catch (error) {
+      reply.code(500).send({ error: 'Failed to get setup points' });
     }
   }
 }
