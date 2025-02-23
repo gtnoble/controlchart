@@ -115,21 +115,59 @@ async function updateChartDropdown(): Promise<void> {
 
   let currentChartType: 'control' | 'histogram' = 'control';
   let isTransformedData = false;
-  let showCusum = true;
+  let showCusum = false;
+
+  // Initialize checkbox states from localStorage
+  function initializeCheckboxStates() {
+    const transformCheckbox = document.getElementById('dataTransformToggle') as HTMLInputElement;
+    const cusumCheckbox = document.getElementById('cusumToggle') as HTMLInputElement;
+
+    // Set default states if not in localStorage
+    isTransformedData = localStorage.getItem('isTransformedData') === 'true';
+    showCusum = localStorage.getItem('showCusum') === 'true';
+
+    if (transformCheckbox) {
+      transformCheckbox.checked = isTransformedData;
+    }
+    if (cusumCheckbox) {
+      cusumCheckbox.checked = showCusum;
+    }
+  }
+
+  // Save checkbox state to localStorage
+  function saveCheckboxState(checkbox: HTMLInputElement, key: string) {
+    localStorage.setItem(key, checkbox.checked.toString());
+  }
+
+  // Initialize checkbox states
+  initializeCheckboxStates();
 
   // Add toggle handlers
   document.getElementById('dataTransformToggle')?.addEventListener('change', async (e) => {
-    isTransformedData = (e.target as HTMLInputElement).checked;
+    const checkbox = e.target as HTMLInputElement;
+    isTransformedData = checkbox.checked;
+    saveCheckboxState(checkbox, 'isTransformedData');
     const data = await getData(currentChartType, isTransformedData, showCusum);
     chart.data = data;
     chart.update();
   });
 
   document.getElementById('cusumToggle')?.addEventListener('change', async (e) => {
-    showCusum = (e.target as HTMLInputElement).checked;
+    const checkbox = e.target as HTMLInputElement;
+    showCusum = checkbox.checked;
+    saveCheckboxState(checkbox, 'showCusum');
     const data = await getData(currentChartType, isTransformedData, showCusum);
     chart.data = data;
     chart.update();
+  });
+
+  // Add lockXAxis toggle handler
+  const lockXAxisToggle = document.getElementById('lockXAxisToggle') as HTMLInputElement;
+  lockXAxisToggle.checked = localStorage.getItem('lockXAxis') === 'true';
+
+  lockXAxisToggle.addEventListener('change', () => {
+    saveCheckboxState(lockXAxisToggle, 'lockXAxis');
+    updateZoomMode();
   });
 
   // Initialize chart
@@ -163,6 +201,7 @@ async function updateChartDropdown(): Promise<void> {
           pan: {
             enabled: true,
             mode: 'xy',
+            onPanComplete: saveZoomState
           },
           zoom: {
             wheel: {
@@ -171,7 +210,8 @@ async function updateChartDropdown(): Promise<void> {
             pinch: {
               enabled: true
             },
-            mode: 'xy'
+            mode: 'xy',
+            onZoomComplete: saveZoomState
           }
         },
         tooltip: {
@@ -185,6 +225,42 @@ async function updateChartDropdown(): Promise<void> {
       }
     }
   });
+
+  // Load saved zoom state
+  function initChart() {
+    const savedState = localStorage.getItem('chartZoomState');
+    if (savedState) {
+      const { zoom, pan } = JSON.parse(savedState);
+      if (chart.options.plugins?.zoom) {
+        chart.options.plugins.zoom.zoom = zoom;
+        chart.options.plugins.zoom.pan = pan;
+      }
+      chart.update();
+    }
+  }
+
+  // Save zoom state periodically
+  function saveZoomState() {
+    const zoom = chart.options.plugins?.zoom?.zoom;
+    const pan = chart.options.plugins?.zoom?.pan;
+    if (zoom && pan) {
+      localStorage.setItem('chartZoomState', JSON.stringify({ zoom, pan }));
+    }
+  }
+
+  // Initialize chart and load state
+  initChart();
+  setInterval(saveZoomState, 5000); // Save every 5 seconds
+
+  const updateZoomMode = () => {
+    if (chart.options.plugins && chart.options.plugins.zoom && chart.options.plugins.zoom.pan) {
+      chart.options.plugins.zoom.pan.mode = lockXAxisToggle.checked ? 'y' : 'xy';
+    }
+    if (chart.options.plugins && chart.options.plugins.zoom && chart.options.plugins.zoom.zoom) {
+      chart.options.plugins.zoom.zoom.mode = lockXAxisToggle.checked ? 'y' : 'xy';
+    }
+    chart.update();
+  };
 
   // Configure dropdown and event listeners
   const chartSelectDropdown = document.getElementById('chart-select-dropdown');
@@ -401,7 +477,6 @@ async function getData(chartType: 'control' | 'histogram', transformed = false, 
 
   if (showCusum && chartData.controlLimits) {
     const upperCusumPoints = makeEdgePoints(chartData.controlLimits.cusumLimit, observations);
-    const lowerCusumPoints = makeEdgePoints(-chartData.controlLimits.cusumLimit, observations);
 
     const upperCusumStatistic = chartData.observations.map(observation => ({
       x: observation.time,
@@ -444,7 +519,7 @@ async function getData(chartType: 'control' | 'histogram', transformed = false, 
     });
 
     dataSets.push({
-      label: "Upper CUSUM Limit",
+      label: "CUSUM Control Limit",
       order: 7,
       data: upperCusumPoints,
       borderColor: "#0000FF",
@@ -457,19 +532,6 @@ async function getData(chartType: 'control' | 'histogram', transformed = false, 
       pointStyle: false
     });
 
-    dataSets.push({
-      label: "Lower CUSUM Limit",
-      order: 8,
-      data: lowerCusumPoints,
-      borderColor: "#800080",
-      backgroundColor: "#800080",
-      pointBorderColor: "#800080",
-      pointBackgroundColor: "#800080",
-      tension: 0,
-      spanGaps: true,
-      borderDash: [2, 2],
-      pointStyle: false
-    });
   }
 
   return { datasets: dataSets, labels: labels };

@@ -11,7 +11,7 @@ add list dataName cli option
 display view point count in UI
 display chart name on page
 display standard deviation on page
-add cusum chart option to control chart plot view
 
-write cusum control limits query
-refactor js code to use new sql statements
+create a 'last n points' backend endpoint
+add EWMA chart
+mark annotated points with a color
