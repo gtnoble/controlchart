@@ -86,25 +86,38 @@ function makeEdgePoints(value: number, observations: { x: number, y: number }[])
 }
 
 /**
- * Updates the chart dropdown with available chart options
+ * Updates the chart select dropdown with available chart options
  */
-async function updateChartDropdown(): Promise<void> {
-  const chartDropdownElements = document.getElementById('select-chart-items');
-  if (!chartDropdownElements) {
-    throw new Error("Unable to find chart dropdown elements DOM element");
+async function updateChartSelect(): Promise<void> {
+  const chartSelect = document.getElementById('chart-select') as HTMLSelectElement;
+  if (!chartSelect) {
+    throw new Error("Unable to find chart select element");
   }
 
   const availableCharts: string[] = (await axios.get(AVAILABLE_CHARTS_URL)).data;
-  const newChartDropdownElements = availableCharts.map((chartName: string) => {
-    const listItem = document.createElement('li');
-    const chartLink = document.createElement('a');
-    chartLink.href = `/chart/${chartName}`;
-    chartLink.className = "dropdown-item";
-    chartLink.innerText = chartName;
-    listItem.appendChild(chartLink);
-    return listItem;
+  
+  // Clear existing options
+  chartSelect.innerHTML = '';
+  
+  // Add options for each available chart
+  availableCharts.forEach((chartName: string) => {
+    const option = document.createElement('option');
+    option.value = chartName;
+    option.textContent = chartName;
+    chartSelect.appendChild(option);
   });
-  chartDropdownElements.replaceChildren(...newChartDropdownElements);
+
+  // Set initial value from URL
+  const currentURL = new URL(window.location.href);
+  const [, , chartName] = currentURL.pathname.split('/');
+  if (chartName) {
+    chartSelect.value = chartName;
+  }
+
+  // Add change handler
+  chartSelect.addEventListener('change', () => {
+    window.location.href = `/chart/${chartSelect.value}`;
+  });
 }
 
 /**
@@ -184,11 +197,8 @@ async function updateChartDropdown(): Promise<void> {
   const currentURL = new URL(window.location.href);
   const [, , chartName] = currentURL.pathname.split('/');
 
-  // Update chart dropdown button text with current chart name
-  const dropdownButton = document.querySelector('#chart-select-dropdown .btn');
-  if (dropdownButton) {
-    dropdownButton.textContent = chartName;
-  }
+  // Initialize chart select
+  await updateChartSelect();
 
   // Initialize chart
   let chart = new Chart(chartElement, {
@@ -305,12 +315,6 @@ async function updateChartDropdown(): Promise<void> {
     }
     chart.update();
   };
-
-  // Configure dropdown and event listeners
-  const chartSelectDropdown = document.getElementById('chart-select-dropdown');
-  if (chartSelectDropdown) {
-    chartSelectDropdown.addEventListener('show.bs.dropdown', updateChartDropdown);
-  }
 
   // Toggle log scale
   const toggleLogButton = document.getElementById('toggleLog');

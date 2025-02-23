@@ -1,4 +1,5 @@
-
+create a 'last n points' UI option
+clicking on the plot places a window centered there
 create a 'last t time' backend endpoint
 add graceful handling of empty charts table
 display view point count in UI
