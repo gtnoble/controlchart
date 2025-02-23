@@ -1,67 +1,165 @@
 <!doctype html>
 <html lang="en">
-  <link rel="stylesheet" type="text/css" href="chart.css" />
   <head>
     <title>Control Chart</title>
+    <link rel="stylesheet" type="text/css" href="chart.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
   </head>
-  <body>
-    <nav class="navbar navbar-expand-lg">
+  <body class="bg-light">
+    <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm mb-3">
       <div class="container-fluid">
-        <div class="expand navbar-expand">
-          <ul class="navbar-nav">
-            <li class="nav-item">
+        <a href="index.html" class="navbar-brand d-flex align-items-center">
+          <i class="bi bi-graph-up me-2"></i>
+          Control Chart
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+      </div>
+    </nav>
+
+    <div class="container-fluid">
+      <div class="controls-section mb-3">
+        <div class="row g-3">
+          <!-- Chart Selection Group -->
+          <div class="col-md-3">
+            <div class="d-flex gap-2 align-items-center">
               <select id="chartType" class="form-select">
                 <option value="control">Control Chart</option>
                 <option value="histogram">Histogram</option>
               </select>
-            </li>
-            <li class="nav-item">
+              
               <div class="dropdown" id="chart-select-dropdown">
-                <button class="btn dropdown-toggle" aria-expanded="false" data-bs-toggle="dropdown">
+                <button class="btn btn-primary dropdown-toggle" aria-expanded="false" data-bs-toggle="dropdown">
+                  <i class="bi bi-bar-chart-line me-1"></i>
                   Chart
                 </button>
-                <ul class="dropdown-menu" id="select-chart-items">
-                </ul>
+                <ul class="dropdown-menu" id="select-chart-items"></ul>
               </div>
-            </li>
-            <li class="nav-item">
-              <input type="text" id="chart-range" class="form-control">
-            </li>
-            <li class="nav-item">
-              <form action="./setSetup" method="post">
-                <button name="set-setup" value="set-setup">Set setup interval</button>
+            </div>
+          </div>
+
+          <!-- Date Range and Zoom Controls -->
+          <div class="col-md-4">
+            <div class="d-flex gap-2 align-items-center">
+              <div class="input-group">
+                <span class="input-group-text">
+                  <i class="bi bi-calendar-range"></i>
+                </span>
+                <input type="text" id="chart-range" class="form-control" placeholder="Date Range">
+              </div>
+              
+              <button id="resetZoom" class="btn btn-outline-secondary">
+                <i class="bi bi-arrows-fullscreen"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Data Load Controls -->
+          <div class="col-md-5">
+            <div class="d-flex gap-2 align-items-center">
+              <form id="setupForm" action="./setSetup" method="post" class="d-inline-block">
+                <button type="submit" name="set-setup" value="set-setup" class="btn btn-outline-primary">
+                  <i class="bi bi-clock-history me-1"></i>
+                  Set Setup
+                </button>
               </form>
-            </li>
-            <li class="nav-item">
-              <button id="resetZoom">Reset Zoom</button>
-            </li>
-            <li class="nav-item">
-              <button id="loadSetup">Load Setup Data</button>
-            </li>
-            <li class="nav-item">
-              <button id="loadAllData">Load All Data</button>
-            </li>
-            <li class="nav-item">
-              <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" id="dataTransformToggle">
-                <label class="form-check-label" for="dataTransformToggle">Transformed Data</label>
+              <button id="loadSetup" class="btn btn-outline-primary">
+                <i class="bi bi-gear me-1"></i>
+                Setup
+              </button>
+              <button id="loadAllData" class="btn btn-outline-primary">
+                <i class="bi bi-download me-1"></i>
+                All Data
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chart Options -->
+        <div class="row mt-3">
+          <div class="col-12">
+            <div class="chart-options p-2 bg-white rounded shadow-sm">
+              <div class="d-flex flex-wrap gap-3 align-items-center">
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" id="dataTransformToggle">
+                  <label class="form-check-label control-label" for="dataTransformToggle">
+                    <i class="bi bi-arrow-repeat me-1"></i>
+                    Transform
+                  </label>
+                </div>
+                
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" id="cusumToggle" checked>
+                  <label class="form-check-label control-label" for="cusumToggle">
+                    <i class="bi bi-graph-up-arrow me-1"></i>
+                    CUSUM
+                  </label>
+                </div>
+                
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" id="lockXAxisToggle">
+                  <label class="form-check-label control-label" for="lockXAxisToggle">
+                    <i class="bi bi-lock me-1"></i>
+                    Lock X
+                  </label>
+                </div>
+                
+                <button id="toggleLog" class="btn btn-outline-secondary btn-sm">
+                  <i class="bi bi-calculator me-1"></i>
+                  Log Y
+                </button>
               </div>
-              <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" id="cusumToggle" checked>
-                <label class="form-check-label" for="cusumToggle">Show CUSUM</label>
-              </div>
-              <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" id="lockXAxisToggle">
-                <label class="form-check-label" for="lockXAxisToggle">Lock X Axis Zoom</label>
-              </div>
-              <button id="toggleLog">Toggle log Y</button>
-            </li>
-          </ul>
+            </div>
+          </div>
         </div>
       </div>
-    </nav>
-    <div style="height: 95vh;"><canvas id="control_chart"></canvas></div>
+
+      <div class="chart-container">
+        <div style="height: 80vh;">
+          <canvas id="control_chart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bootstrap Modal for Confirmation -->
+    <div class="modal fade" id="confirmSetupModal" tabindex="-1">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Confirm Action</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <p>Are you sure you want to set the current time range as the setup interval?</p>
+            <p class="text-muted small">This action will update the setup interval for this chart.</p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-primary" id="confirmSetup">Confirm</button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <script type="module" src="controlChart.ts"></script>
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        const setupForm = document.getElementById('setupForm');
+        const confirmSetupModal = new bootstrap.Modal(document.getElementById('confirmSetupModal'));
+        const confirmSetupBtn = document.getElementById('confirmSetup');
+
+        setupForm.addEventListener('submit', function(e) {
+          e.preventDefault();
+          confirmSetupModal.show();
+        });
+
+        confirmSetupBtn.addEventListener('click', function() {
+          setupForm.submit();
+          confirmSetupModal.hide();
+        });
+      });
+    </script>
   </body>
 </html>

@@ -1,2 +1,225 @@
 @import 'npm:daterangepicker/daterangepicker.css';
 @import 'npm:bootstrap/dist/css/bootstrap.css';
+
+:root {
+  --primary-color: #4361ee;
+  --secondary-color: #3f37c9;
+  --success-color: #4bb543;
+  --text-color: #2b2d42;
+  --text-muted: #6c757d;
+  --background-color: #f8f9fa;
+  --card-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+}
+
+/* Chart page specific styles */
+.navbar {
+  padding: 0.75rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+}
+
+.navbar-brand {
+  font-weight: 600;
+  font-size: 1.15rem;
+}
+
+.navbar-brand i {
+  color: var(--primary-color);
+}
+
+.controls-section {
+  background: white;
+  border-radius: 8px;
+  box-shadow: var(--card-shadow);
+  padding: 1rem;
+}
+
+.chart-options {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  transition: all 0.2s ease;
+}
+
+.chart-options:hover {
+  border-color: var(--primary-color);
+}
+
+/* Form controls */
+.form-select,
+.form-control {
+  height: 34px;
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  padding: 0.25rem 0.75rem;
+  transition: all 0.2s ease;
+}
+
+.form-select:focus,
+.form-control:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.15);
+}
+
+.input-group-text {
+  background-color: white;
+  border: 1px solid #e9ecef;
+  color: var(--text-muted);
+  padding: 0.25rem 0.75rem;
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem 0.85rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  height: 34px;
+}
+
+.btn i {
+  font-size: 1em;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+}
+
+.btn-outline-primary {
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.btn-outline-primary:hover {
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
+  color: white;
+}
+
+.btn-outline-secondary {
+  color: var(--text-color);
+  border-color: #e9ecef;
+}
+
+.btn-outline-secondary:hover {
+  background-color: #e9ecef;
+  border-color: #e9ecef;
+  color: var(--text-color);
+}
+
+/* Switches */
+.form-check.form-switch {
+  padding-left: 2.25rem;
+  margin-bottom: 0;
+}
+
+.form-check-input {
+  cursor: pointer;
+  width: 2rem;
+  height: 1.1rem;
+  margin-left: -2.25rem;
+  margin-top: 0.2rem;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='rgba%280, 0, 0, 0.25%29'/%3e%3c/svg%3e");
+  background-color: rgba(0, 0, 0, 0.1);
+  border-color: rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+}
+
+.form-check-input:checked {
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.form-check-input:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.15);
+}
+
+.form-check-label {
+  cursor: pointer;
+  font-size: 0.9rem;
+  display: inline-flex;
+  align-items: center;
+}
+
+.form-check-label i {
+  color: var(--text-muted);
+}
+
+/* Chart container */
+.chart-container {
+  background: white;
+  border-radius: 8px;
+  box-shadow: var(--card-shadow);
+  padding: 1rem;
+  margin-top: 0.75rem;
+}
+
+/* Daterangepicker customization */
+.daterangepicker {
+  border-radius: 8px;
+  box-shadow: var(--card-shadow);
+  border: none;
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+.daterangepicker .calendar-table {
+  border-radius: 8px;
+}
+
+.daterangepicker td.active, 
+.daterangepicker td.active:hover {
+  background-color: var(--primary-color);
+}
+
+.daterangepicker .ranges li.active {
+  background-color: var(--primary-color);
+}
+
+/* Modal customization */
+.modal-content {
+  border-radius: 8px;
+  border: none;
+}
+
+.modal-header {
+  padding: 1rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.modal-body {
+  padding: 1rem;
+}
+
+.modal-footer {
+  padding: 0.75rem 1rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .controls-section {
+    padding: 0.75rem;
+  }
+  
+  .chart-container {
+    padding: 0.75rem;
+  }
+  
+  .d-flex {
+    flex-wrap: wrap;
+  }
+  
+  .btn {
+    width: 100%;
+    margin-bottom: 0.5rem;
+  }
+  
+  .form-check.form-switch {
+    width: 100%;
+    margin-bottom: 0.5rem;
+  }
+}

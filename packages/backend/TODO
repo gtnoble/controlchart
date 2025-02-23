@@ -1,5 +1,4 @@
 
-create an endpoint for adding a data point
 create a 'last n points' backend endpoint
 create a 'last t time' backend endpoint
 Write pino hooks to send error/warning log counts to backend

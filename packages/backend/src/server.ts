@@ -20,7 +20,7 @@ interface ObservationRequestBody {
   value: number;
   dataName: string;
   time?: string;
-  annotation?: string;
+  annotations?: string;
 }
 
 interface CreateChartRequestBody {
@@ -65,6 +65,7 @@ export class Server {
     this.fastify.get('/chart/:chartName/setup/chart', this.serveChartHtmlHandler.bind(this));
     this.fastify.post('/dataPoint/:dataPointId/annotate', this.addAnnotationHandler.bind(this));
     this.fastify.get('/dataPoint/:dataPointId/annotation', this.getAnnotationHandler.bind(this));
+    this.fastify.post<{ Body: ObservationRequestBody }>('/addObservation', this.addObservationHandler.bind(this));
 
     // New endpoint for adding observations
     this.fastify.post<{ Body: CreateChartRequestBody; Params: { chartName: string } }>('/createChart/:chartName', async (request, reply) => {
@@ -92,30 +93,7 @@ export class Server {
       }
     });
 
-    this.fastify.post<{ Body: ObservationRequestBody }>('/api/observations', async (request, reply) => {
-      try {
-      const { value, dataName, annotation } = request.body;
 
-      if (!value || !dataName) {
-          return reply.status(400).send({ error: 'Missing required fields: value and dataName' });
-        }
-
-        const observation = {
-          value,
-          dataName,
-          time: request.body.time || new Date().toISOString()
-        };
-
-        const observationId = await this.database.saveObservation(observation);
-        if (annotation) {
-          this.database.addAnnotation(observationId, annotation);
-        }
-        reply.status(201).send({ message: 'Observation saved successfully' });
-      } catch (error) {
-        console.error('Error saving observation:', error);
-        reply.status(500).send({ error: 'Failed to save observation' });
-      }
-    });
   }
 
   public async start(port: number) {
@@ -242,5 +220,28 @@ export class Server {
     } catch (error) {
       reply.code(500).send({ error: 'Failed to get setup points' });
     }
-  }
+  }    
+  
+  private async addObservationHandler (request: any, reply: any) {
+    try {
+    const { value, dataName, time, annotations } = request.body;
+
+    if (!value || !dataName) {
+        return reply.status(400).send({ error: 'Missing required fields: value and dataName' });
+      }
+
+      const observation = {
+        value,
+        dataName,
+        time: time ? Number(time) : undefined,
+        annotations: annotations 
+      };
+
+      this.database.saveObservation(observation)
+      reply.status(201).send({ message: 'Observation saved successfully' });
+    } catch (error) {
+      console.error('Error saving observation:', error);
+      reply.status(500).send({ error: 'Failed to save observation' });
+    }
+  };
 }
