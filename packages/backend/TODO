@@ -1,3 +1,4 @@
+debug allele_registry_json_requests chart
 create a 'last n points' UI option
 clicking on the plot places a window centered there
 create a 'last t time' backend endpoint
@@ -7,3 +8,4 @@ add EWMA chart
 Have setup interval creation match zoom level
 add autocorrelation mode
 add list dataName cli option
+

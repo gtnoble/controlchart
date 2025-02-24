@@ -16,16 +16,6 @@ export type TransformationName = "log" | undefined;
 export type TransformationType = (value: number) => number;
 export type TransformationPair = { forward: TransformationType, reverse: TransformationType };
 
-const LOG_TRANSFORMATION_PAIR: TransformationPair = {
-  forward: (value) => Math.log10(value),
-  reverse: (value) => Math.pow(10, value)
-};
-
-const NULL_TRANSFORMATION: TransformationPair = {
-  forward: (value) => value,
-  reverse: (value) => value
-};
-
 interface ChartParametersSchema {
   chartType: ChartType;
   dataName: string;
@@ -94,7 +84,7 @@ interface ChartSetupSchema {
         transformation STRING
       )`,
     createIndex: `
-      CREATE INDEX IF NOT EXISTS chart_data_lookup ON chart_data (time, value, dataName)`,
+      CREATE INDEX IF NOT EXISTS chart_data_lookup ON chart_data (id, time, value, dataName)`,
     createChartIndex: `
       CREATE INDEX IF NOT EXISTS chart_lookup ON chart (chartName, chartType, dataName)
     `,
@@ -248,7 +238,7 @@ interface ChartSetupSchema {
   } as const;
 
   const SQL = {
-    getRecentTransformedChartPoints: `
+    getRecentChartPoints: `
       WITH recent_points AS (
         SELECT 
           cp.id,
@@ -270,31 +260,6 @@ interface ChartSetupSchema {
         cusumUpperStatistic,
         cusumLowerStatistic,
         value,
-        annotations
-      FROM recent_points
-      ORDER BY time ASC, id ASC
-    `,
-    getRecentChartPoints: `
-      WITH recent_points AS (
-        SELECT 
-          cp.id,
-          cp.time,
-          cp.original_value as value,
-          reverseTransform(transformation, cp.transformedUpperStatistic) AS cusumUpperStatistic,
-          reverseTransform(transformation, cp.transformedLowerStatistic) AS cusumLowerStatistic,
-          cp.annotations,
-          cp.transformation
-        FROM chart_points cp
-        WHERE cp.chartName = :chartName
-        ORDER BY cp.time DESC, cp.id DESC
-        LIMIT :count
-      )
-      SELECT 
-        id,
-        time,
-        value,
-        cusumUpperStatistic
-        cusumLowerStatistic,
         annotations
       FROM recent_points
       ORDER BY time ASC, id ASC
@@ -322,7 +287,7 @@ interface ChartSetupSchema {
     `,
     getChartParameters: `
       SELECT * FROM chart_parameters WHERE chartName = :chartName`,
-    getTransformedChartPoints: `
+    getChartPoints: `
       SELECT 
         cp.id,
         cp.chartName,
@@ -336,37 +301,13 @@ interface ChartSetupSchema {
         cp.chartName = :chartName 
         AND cp.time BETWEEN :startTime AND :endTime
       ORDER BY cp.time, cp.id;`,
-    getChartPoints: `
-      SELECT 
-        cp.id, 
-        cp.time, 
-        cp.original_value AS value,
-        reverseTransform(transformation, cp.transformedUpperStatistic) AS cusumUpperStatistic,
-        reverseTransform(transformation, cp.transformedLowerStatistic) AS cusumLowerStatistic,
-        cp.annotations
-      FROM chart_points cp
-      WHERE 
-        cp.chartName = :chartName 
-        AND cp.time BETWEEN :startTime AND :endTime
-      ORDER BY cp.time, cp.id;`,
-    getTransformedControlLimits: `
+    getControlLimits: `
       SELECT
         cl.chartName,
         cl.mean,
         cl.upperControlLimit,
         cl.lowerControlLimit,
         cl.cusumControlLimit
-      FROM
-        control_limits cl
-      WHERE
-        cl.chartName = :chartName
-    `,
-    getControlLimits: `
-      SELECT
-        reverseTransform(cl.transformation, cl.mean) AS mean,
-        reverseTransform(cl.transformation, cl.upperControlLimit) AS upperControlLimit,
-        reverseTransform(cl.transformation, cl.lowerControlLimit) AS lowerControlLimit,
-        reverseTransform(cl.transformation, cl.cusumControlLimit) AS cusumControlLimit
       FROM
         control_limits cl
       WHERE
@@ -382,10 +323,93 @@ interface ChartSetupSchema {
         WHERE chart_data_id = ? 
         ORDER BY created_time DESC
         LIMIT 1
-    `
-  } as const;
+    `,
+getExtremeChartPoints: `
+  WITH cl_data AS (
+    SELECT
+      cl.chartName,
+      cl.mean,
+      cl.upperControlLimit,
+      cl.lowerControlLimit,
+      cl.cusumControlLimit
+    FROM
+      control_limits cl
+    WHERE
+      cl.chartName = :chartName
+  ),
+  cp_data AS (
+    SELECT 
+      cp.id,
+      cp.chartName,
+      cp.time,
+      cp.transformed_value AS value,
+      cp.transformedUpperStatistic AS cusumUpperStatistic,
+      cp.transformedLowerStatistic AS cusumLowerStatistic,
+      cp.annotations
+    FROM chart_points cp
+    WHERE 
+      cp.chartName = :chartName 
+      AND cp.time BETWEEN :startTime AND :endTime
+    ORDER BY cp.time, cp.id
+  ),
+  blocks AS (
+    SELECT
+      cp.*,
+      NTILE(:numBlocks) OVER (ORDER BY cp.time) AS block_number
+    FROM cp_data cp
+  ),
+  block_extremes AS (
+    SELECT
+      b.block_number,
+      b.id,
+      b.time,
+      b.value,
+      b.cusumUpperStatistic,
+      b.cusumLowerStatistic,
+      b.annotations,
+      ABS(b.value - cl.mean) AS abs_diff
+    FROM blocks b
+    JOIN cl_data cl ON b.chartName = cl.chartName
+  ),
+  max_extremes AS (
+    SELECT
+      be.block_number,
+      be.id,
+      be.time,
+      be.value,
+      be.cusumUpperStatistic,
+      be.cusumLowerStatistic,
+      be.annotations
+    FROM block_extremes be
+    WHERE (be.block_number, be.abs_diff) IN (
+      SELECT
+        block_number,
+        MAX(abs_diff)
+      FROM block_extremes
+      GROUP BY block_number
+    )
+  )
+  SELECT
+    me.id,
+    me.time,
+    me.value,
+    me.cusumUpperStatistic,
+    me.cusumLowerStatistic,
+    me.annotations
+  FROM max_extremes me
+  ORDER BY me.time, me.id;
+`
+} as const;
 
-export class ChartDb {
+  const reverseTransform = (transformationName: TransformationName | false | undefined, value: number) => {
+    if (transformationName === "log") {
+      return Math.pow(10, Number(value));
+    }
+    else {
+      return value
+    }};
+
+  export class ChartDb {
   
 
   database: Database.Database;
@@ -455,17 +479,13 @@ export class ChartDb {
       }
     })
 
+    
     this.database.function(
       'reverseTransform', 
       {deterministic: true}, 
-      (transformationName, value) => {
-      if (transformationName === "log") {
-        return Math.pow(10, Number(value));
-      }
-      else {
-        return value
-      }
-    })
+      //@ts-ignore
+      reverseTransform
+    )
 
     // Create tables first
     this.database.prepare(createSQL.createChartDataTable).run();
@@ -473,7 +493,13 @@ export class ChartDb {
     this.database.prepare(createSQL.createChartTable).run();
     this.database.prepare(createSQL.createSetupTable).run();
     this.database.prepare(createSQL.createTransformationsTable).run();
+
+    // Create indexes
     this.database.prepare(createSQL.createIndex).run();
+    this.database.prepare(createSQL.createChartIndex).run();
+    this.database.prepare(createSQL.createSetupIndex).run();
+    this.database.prepare(createSQL.createAnnotationsIndex).run();
+    this.database.prepare(createSQL.createTransformationsIndex).run();
 
     // Create views in dependency order
     this.database.prepare(createSQL.createLatestSetupView).run();
@@ -588,21 +614,16 @@ export class ChartDb {
 
   getTransformation(
     chartName: string
-  ): TransformationPair {
+  ): TransformationName | undefined {
     assert(this.preparedSql.getTransformation)
     const transformationRow: any = this.preparedSql.getTransformation.get(
       { chartName: chartName }
     )
 
     const transformation = transformationRow?.transformation;
-    if (!transformation) {
-      return NULL_TRANSFORMATION;
-    }
-    else {
-      assert(transformation === "log");
-      return LOG_TRANSFORMATION_PAIR
-    }
+    return transformation;
   }
+
 
   getChartSetup(
     chartName: string
@@ -618,24 +639,44 @@ export class ChartDb {
 
   getChartPoints(chartName: string, startTime: number, endTime: number, isTransformed: boolean = false): ChartQueryResultSchema[] {
     assert(this.preparedSql.getChartPoints)
-    assert(this.preparedSql.getTransformedChartPoints)
-    return (isTransformed ? this.preparedSql.getTransformedChartPoints : this.preparedSql.getChartPoints)
+    assert(this.preparedSql.getExtremeChartPoints)
+    const transformationName = isTransformed && this.getTransformation(chartName);
+    return ((this.preparedSql.getExtremeChartPoints)
       .all(
         {chartName: chartName,
           startTime: startTime,
-          endTime: endTime
+          endTime: endTime,
+          numBlocks: 1000
         }
-      ) as ChartQueryResultSchema[]
+      ) as ChartQueryResultSchema[]).map(
+        (row: ChartQueryResultSchema) => {
+          return {
+            ...row, 
+            value: reverseTransform(transformationName, row.value),
+            cusumLowerStatistic: reverseTransform(transformationName, row.cusumLowerStatistic),
+            cusumUpperStatistic: reverseTransform(transformationName, row.cusumUpperStatistic)
+          };
+      })
   }
 
   getRecentChartPoints(chartName: string, count: number, isTransformed: boolean = false): ChartQueryResultSchema[] {
     assert(this.preparedSql.getRecentChartPoints)
-    assert(this.preparedSql.getRecentTransformedChartPoints)
-    return (isTransformed ? this.preparedSql.getRecentTransformedChartPoints : this.preparedSql.getRecentChartPoints)
+    const transformationName = isTransformed && this.getTransformation(chartName);
+    return ((this.preparedSql.getRecentChartPoints)
       .all({
         chartName: chartName,
         count: count
-      }) as ChartQueryResultSchema[]
+      }) as ChartQueryResultSchema[])
+      .map(
+        (row: ChartQueryResultSchema) => {
+          return {
+            ...row, 
+            value: reverseTransform(transformationName, row.value),
+            cusumLowerStatistic: reverseTransform(transformationName, row.cusumLowerStatistic),
+            cusumUpperStatistic: reverseTransform(transformationName, row.cusumUpperStatistic)
+          };
+        }
+      )
   }
 
   getRecentChart(chartName: string, count: number, isTransformed: boolean = false): ChartData {
@@ -671,17 +712,17 @@ export class ChartDb {
     isTransformed: boolean = false
   ): ControlLimitsType {
     assert(this.preparedSql.getControlLimits);
-    assert(this.preparedSql.getTransformedControlLimits);
-    const result = (isTransformed ? this.preparedSql.getTransformedControlLimits : this.preparedSql.getControlLimits)
+    const transformation = isTransformed && this.getTransformation(chartName);
+    const result = (this.preparedSql.getControlLimits)
       .get({
         chartName: chartName
       }) as ControlLimitsQueryResultSchema;
 
     return {
-      individualsMean: result.mean,
-      upperIndividualsLimit: result.upperControlLimit,
-      lowerIndividualsLimit: result.lowerControlLimit,
-      cusumLimit: result.cusumControlLimit
+      individualsMean: reverseTransform(transformation, result.mean),
+      upperIndividualsLimit: reverseTransform(transformation, result.upperControlLimit),
+      lowerIndividualsLimit: reverseTransform(transformation, result.lowerControlLimit),
+      cusumLimit: reverseTransform(transformation, result.cusumControlLimit)
     }
   }
   
