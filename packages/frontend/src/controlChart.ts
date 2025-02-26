@@ -364,8 +364,7 @@ async function updateChartSelect(): Promise<void> {
     }
   });
 
-  // Reset zoom
-  document.getElementById('resetZoom')?.addEventListener('click', () => {
+  function resetZoom () {
     // Clear min/max settings to show full dataset
     if (chart.options.scales?.x) {
       chart.options.scales.x.min = undefined;
@@ -375,8 +374,38 @@ async function updateChartSelect(): Promise<void> {
       chart.options.scales.y.min = undefined;
       chart.options.scales.y.max = undefined;
     }
-    chart.update();
     localStorage.removeItem('chartZoomState');
+  }
+  // Reset zoom
+  document.getElementById('resetZoom')?.addEventListener('click', () => {
+    resetZoom();
+    chart.update();
+  });
+
+  // Refresh data for current visible range
+  document.getElementById('refresh-button')?.addEventListener('click', async () => {
+    const xAxis = chart.scales.x;
+    if (xAxis.min !== undefined && xAxis.max !== undefined) {
+      // Find the actual timestamps from the data points
+      const allPoints = chart.data.datasets[0].data
+        .map((point: any, index: number) => ({time: point.x, index: index}))
+        .sort((a, b) => a.time - b.time);
+
+      // Find timestamps closest to the visible range
+      const visibleTimes = allPoints.filter(
+        (x) => x.index >= xAxis.min && x.index <= xAxis.max
+      ).map((x) => x.time);
+
+      resetZoom();
+      if (visibleTimes.length > 0) {
+        const startTime = visibleTimes[0];
+        const endTime = visibleTimes[visibleTimes.length - 1];
+        const currentURL = new URL(window.location.href);
+        const [, , chartName] = currentURL.pathname.split('/');
+        const updatedPlotURL = `/chart/${chartName}/startTime/${startTime}/endTime/${endTime}/chart`;
+        window.location.replace(updatedPlotURL);
+      }
+    }
   });
 
   // Load setup data

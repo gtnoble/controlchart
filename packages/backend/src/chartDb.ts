@@ -358,6 +358,13 @@ getExtremeChartPoints: `
       NTILE(:numBlocks) OVER (ORDER BY cp.time) AS block_number
     FROM cp_data cp
   ),
+  block_means AS (
+    SELECT
+      block_number,
+      AVG(value) as block_mean
+    FROM blocks
+    GROUP BY block_number
+  ),
   block_extremes AS (
     SELECT
       b.block_number,
@@ -367,9 +374,13 @@ getExtremeChartPoints: `
       b.cusumUpperStatistic,
       b.cusumLowerStatistic,
       b.annotations,
-      ABS(b.value - cl.mean) AS abs_diff
+      CASE 
+        WHEN cl.mean IS NOT NULL THEN ABS(b.value - cl.mean)
+        ELSE ABS(b.value - bm.block_mean)
+      END AS abs_diff
     FROM blocks b
-    JOIN cl_data cl ON b.chartName = cl.chartName
+    LEFT JOIN cl_data cl ON b.chartName = cl.chartName
+    JOIN block_means bm ON b.block_number = bm.block_number
   ),
   max_extremes AS (
     SELECT
@@ -640,7 +651,7 @@ getExtremeChartPoints: `
   getChartPoints(chartName: string, startTime: number, endTime: number, isTransformed: boolean = false): ChartQueryResultSchema[] {
     assert(this.preparedSql.getChartPoints)
     assert(this.preparedSql.getExtremeChartPoints)
-    const transformationName = isTransformed && this.getTransformation(chartName);
+    const transformationName = ! isTransformed && this.getTransformation(chartName);
     return ((this.preparedSql.getExtremeChartPoints)
       .all(
         {chartName: chartName,
@@ -712,7 +723,7 @@ getExtremeChartPoints: `
     isTransformed: boolean = false
   ): ControlLimitsType {
     assert(this.preparedSql.getControlLimits);
-    const transformation = isTransformed && this.getTransformation(chartName);
+    const transformation =  ! isTransformed && this.getTransformation(chartName);
     const result = (this.preparedSql.getControlLimits)
       .get({
         chartName: chartName
