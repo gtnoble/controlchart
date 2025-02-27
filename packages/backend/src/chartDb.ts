@@ -12,7 +12,7 @@ import type {
   Observation,
 } from './types/chart.d.ts';
 
-export type TransformationName = "log" | undefined;
+export type TransformationName = "log" | "anscombe" | "freeman-tukey" | undefined;
 export type TransformationType = (value: number) => number;
 export type TransformationPair = { forward: TransformationType, reverse: TransformationType };
 
@@ -412,13 +412,86 @@ getExtremeChartPoints: `
 `
 } as const;
 
-  const reverseTransform = (transformationName: TransformationName | false | undefined, value: number) => {
+  const transform = (
+    transformationName: TransformationName | false | undefined, 
+    value: number | string
+  ) => {
+    const x = Number(value);
+
+    let y: number;
     if (transformationName === "log") {
-      return Math.pow(10, Number(value));
+      y = Math.log10(x);
+    }
+    else if (transformationName === "anscombe") {
+      y = 2 * Math.sqrt(x);
+    }
+    else if (transformationName === "freeman-tukey") {
+      y = Math.sqrt(x + 1) + Math.sqrt(x);
     }
     else {
-      return value
-    }};
+      y = x;
+    };
+    return y;
+  }
+  
+  const ABSOLUTE_TOLERANCE = 0.0001;
+  const RELATIVE_TOLERANCE = 0.0001;
+  const MAX_ITERATIONS = 100;
+  
+  const getRoot =
+  (
+    func: (x: number) => number, 
+    derivative: (x: number) => number, 
+    guess: number
+  ) => {
+      // Newton's method for root finding
+      let xn = guess;
+      let delta = Infinity;
+      for (
+        let ii = 0; 
+        ii <= MAX_ITERATIONS &&
+          ! isNaN(xn) &&
+          Math.abs(delta) >= ABSOLUTE_TOLERANCE && 
+          Math.abs(delta / xn) >= RELATIVE_TOLERANCE;
+        ii++
+      ) {
+        const nextXn = xn - func(xn) / derivative(xn);
+        if (isNaN(nextXn)) {
+          break;
+        }
+        delta = nextXn - xn;
+        xn = nextXn;
+      }
+      
+      return xn
+  }
+
+  const reverseTransform = (
+    transformationName: TransformationName | false | undefined, 
+    value: number | string
+  ): number => {
+    const y = Number(value);
+    
+    let x: number;
+    if (transformationName === "log") {
+      x = Math.pow(10, y);
+    }
+    else if (transformationName === "anscombe") {
+      x = Math.pow(y / 2, 2);
+    }
+    // The inverse is not analytic, so need to solve numerically
+    else if (transformationName === "freeman-tukey") {
+      const guess: number = reverseTransform("anscombe", y);
+      const func = (x: number) => transform("freeman-tukey", x) - y;
+      const derivative = (x: number) => 1 / (2 * Math.sqrt(x + 1)) + 1 / (2 * Math.sqrt(x));
+      x = getRoot(func, derivative, guess);
+    }
+    else {
+      x = y;
+    }
+    return x;
+  };
+
 
   export class ChartDb {
   
@@ -481,14 +554,9 @@ getExtremeChartPoints: `
     this.database.function(
       'transform', 
       {deterministic: true}, 
-      (transformationName, value) => {
-      if (transformationName === "log") {
-        return Math.log10(Number(value));
-      }
-      else {
-        return value
-      }
-    })
+      //@ts-ignore
+      transform
+      )
 
     
     this.database.function(
