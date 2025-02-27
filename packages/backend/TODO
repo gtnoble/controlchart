@@ -1,5 +1,6 @@
-add EWMA chart
+test with counts data
 add chart modification
+add EWMA chart
 add a license
 have UI fetch individuals and CUSUM data separately
 create a 'last n points' UI option
@@ -12,3 +13,4 @@ add list dataName cli option
 add chart deletion
 add first block point data reduction option
 add "backwards" CUSUM and EWMA
+dynamically fetch zoom window data on zoom in/out
