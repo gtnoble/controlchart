@@ -1,5 +1,5 @@
-test with counts data
 add chart modification
+add chart transformation to stats view
 add EWMA chart
 add a license
 have UI fetch individuals and CUSUM data separately
@@ -14,3 +14,5 @@ add chart deletion
 add first block point data reduction option
 add "backwards" CUSUM and EWMA
 dynamically fetch zoom window data on zoom in/out
+add qqnorm plot
+add mean and standard deviation to stats view
