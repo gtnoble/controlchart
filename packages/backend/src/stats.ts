@@ -1,9 +1,12 @@
+import math from '@stdlib/math';
 import statistics from '@stdlib/stats';
 
 import {
   ConfidenceIntervalTest,
   PValueTest,
 } from './types/statistics.js';
+
+const special = math.base.special;
 
 const kstest = statistics.kstest;
 
@@ -88,4 +91,12 @@ export function runsRandomnessTest (
     lower: minumumExpectedRuns,
     upper: maximumExpectedRuns
   };
+}
+
+export const c4 = (n: number) => {
+  return Math.exp(
+    .5 * Math.log(2 / (n - 1)) +
+    special.gammaln(n / 2) -
+    special.gammaln((n - 1) / 2)
+  )
 }

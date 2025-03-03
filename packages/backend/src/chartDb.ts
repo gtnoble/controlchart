@@ -508,9 +508,12 @@ getExtremeChartPoints: `
       'standardDeviation',
       {
         deterministic: true,
-        start: () => [statistics.incr.incrstdev()],
-        step: (array: any[], nextValue) => {array[0](nextValue)},
-        result: (array) => array[0](),
+        start: () => [statistics.incr.incrstdev(), 0],
+        step: (array: any[], nextValue) => {
+          array[0](nextValue);
+          array[1] += 1;
+        },
+        result: (array) => array[0]() / stats.c4(array[1]),
         //@ts-ignore
         inverse: (array, next) => {return}
       }
