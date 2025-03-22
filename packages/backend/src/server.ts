@@ -99,8 +99,8 @@ export class Server {
 
   }
 
-  public async start(port: number) {
-    await this.fastify.listen({ port });
+  public async start(port: number, host?: string) {
+    await this.fastify.listen({ port, host });
   }
 
   // Handler functions

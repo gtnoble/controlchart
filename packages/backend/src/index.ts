@@ -49,7 +49,8 @@ async function main () {
         (yargs) => {
           yargs.options({
             database: {type: "string", alias: "d", required: true},
-            port: {type: "number", alias: "p", default: 42069}
+            port: {type: "number", alias: "p", default: 42069},
+            host: {type: "string", alias: "h", description: "Server IP address to bind to"}
           })
         },
         server
@@ -160,7 +161,7 @@ async function initHandler (argv: any) {
 
 async function server (argv: any) {
   const server = new Server(argv.database);
-  server.start(argv.port)
+  server.start(argv.port, argv.host)
 }
 
 async function chartHandler (argv: any) {
@@ -187,6 +188,3 @@ function validateChartName (chartName: string, database: ChartDb) {
 }
 
 main();
-
-  
-  
