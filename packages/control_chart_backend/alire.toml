@@ -1,0 +1,28 @@
+name = "control_chart_backend"
+description = "Server for control chart service"
+version = "0.1.0-dev"
+
+authors = ["Garret Noble"]
+maintainers = ["Garret Noble <garretnoble@gmail.com>"]
+maintainers-logins = ["gtnoble"]
+licenses = "MIT OR Apache-2.0 WITH LLVM-exception"
+website = ""
+tags = []
+
+[[depends-on]]
+ada_sqlite3 = "*"
+
+[[pins]]
+ada_sqlite3 = { path = "/home/gtnoble/Documents/Projects/ada-sqlite3" }
+
+[[depends-on]]
+aws = "^24.0.0"
+
+[[depends-on]]
+parse_args = "~0.9.0"
+
+[[depends-on]]
+gnatcoll = "^24.0.0"
+
+[[depends-on]]
+alog = "~0.6.0"

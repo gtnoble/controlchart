@@ -1,0 +1,4 @@
+Pick a new logging library with an alire package
+  Alog doesn't have an Alire package
+Make test sub-crate
+  Write tests
