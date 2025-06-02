@@ -1,98 +1,413 @@
 # Control Chart Application
 
-## Project Overview
-The Control Chart Application is a comprehensive system designed for real-time statistical process monitoring. It enables users to collect, analyze, and visualize data using various control charts, helping to identify process anomalies and maintain quality control. The application supports data transformations, statistical tests, and interactive visualization features through a web-based interface and a command-line utility.
+A comprehensive **Statistical Process Control (SPC)** system for quality control and process monitoring. This application provides both command-line and web-based tools for real-time process monitoring, quality control analysis, and data-driven decision making using industry-standard statistical methods.
 
 ## Features
-- **Real-time Data Collection**: Collect data points via a command-line interface or HTTP POST requests.
-- **Dynamic Control Charts**: Visualize process data using Individuals charts, Histograms, and CUSUM charts.
-- **Statistical Process Control**: Automatically calculate and display Upper Control Limits (UCL), Lower Control Limits (LCL), and Mean, with support for setup periods.
-- **Data Transformations**: Apply logarithmic, Anscombe, and Freeman-Tukey transformations to normalize data for accurate analysis.
-- **Interactive Visualization**: Zoom, pan, and filter data on charts.
-- **Anomaly Detection & Annotation**: Highlight data points outside control limits and allow users to add custom annotations for context.
-- **Statistical Tests**: Display results for Normality (Kolmogorov-Smirnov) and Randomness (Runs Test) to assess process behavior.
-- **Web-based Interface**: User-friendly web UI for chart selection, creation, and detailed viewing.
-- **Monorepo Structure**: Organized into separate backend and frontend packages for modular development.
 
-## Technical Stack
+### 📊 Statistical Control Charts
+- **Individual/X Charts**: Monitor individual measurements with 3-sigma control limits
+- **CUSUM Charts**: Detect small but persistent shifts in process mean
+- **Count Charts**: Monitor discrete events and defect rates
+- **Setup Intervals**: Establish control limits from stable baseline periods
 
-### Backend
-- **Node.js**: Runtime environment.
-- **Fastify**: High-performance web framework for REST APIs.
-- **better-sqlite3**: Synchronous SQLite database driver.
-- **@stdlib/stats**: Comprehensive JavaScript statistical library.
-- **yargs**: Command-line argument parser.
-- **TypeScript**: For type-safe and maintainable code.
+### 🔬 Advanced Analytics
+- **Data Transformations**: Log, Anscombe, Freeman-Tukey for non-normal data
+- **Normality Testing**: Kolmogorov-Smirnov test for distribution validation
+- **Randomness Testing**: Runs test for pattern detection
+- **Statistical Summaries**: Comprehensive process statistics
 
-### Frontend
-- **Chart.js**: Flexible charting library for data visualization.
-- **chartjs-plugin-zoom**: Enables interactive chart zooming and panning.
-- **axios**: Promise-based HTTP client.
-- **Bootstrap**: CSS framework for responsive UI.
-- **Daterangepicker**: jQuery plugin for date range selection.
-- **jQuery**: General DOM manipulation.
-- **TypeScript**: For type-safe and maintainable code.
+### 💻 Interactive Web Interface
+- **Professional UI**: Bootstrap-based responsive design
+- **Zoomable Charts**: Interactive Chart.js-based plotting with zoom/pan
+- **Real-time Updates**: Dynamic chart updates and data refresh
+- **Annotation System**: Click-to-annotate data points with context
+- **Multiple Views**: Control charts, histograms, statistical dashboards
 
-### Build System
-- **npm workspaces**: Manages the monorepo.
-- **TypeScript Compiler (tsc)**: Compiles TypeScript to JavaScript.
+### ⚡ CLI Automation Tools
+- **Automated Data Collection**: Collect data from external commands
+- **Manual Data Entry**: Interactive stdin data input
+- **Chart Management**: Initialize, configure, and export charts
+- **Scriptable Interface**: JSON output for programmatic consumption
+
+### 🗄️ Robust Data Management
+- **SQLite Database**: Efficient time-series data storage
+- **Custom Functions**: Statistical calculations at database level
+- **Data Reduction**: Handle millions of data points efficiently
+- **Time-stamped Storage**: Millisecond precision data tracking
+
+## Quick Start
+
+### Prerequisites
+- **Node.js** 18+ 
+- **npm** 8+
+
+### Installation
+
+```bash
+# Clone the repository
+git clone <repository-url>
+cd control_chart
+
+# Install dependencies and build
+npm install
+npm run build
+```
+
+### Start the Web Interface
+
+```bash
+# Start the server (default port 42069)
+npm start -- --database charts.db
+
+# Or specify custom port and host
+npm start -- --database charts.db --port 8080 --host 0.0.0.0
+```
+
+Access the web interface at `http://localhost:42069`
+
+### Create Your First Chart
+
+```bash
+# Initialize a new control chart
+npx control_chart init \
+  --database charts.db \
+  --chart_name "production_line_1" \
+  --data_name "part_diameter" \
+  --type "individuals"
+
+# Start collecting data (example: measuring temperature every 5 seconds)
+npx control_chart collect \
+  --database charts.db \
+  --name "part_diameter" \
+  --interval 5000 \
+  --command "sensors | grep 'Core 0' | awk '{print $3}' | sed 's/+//;s/°C//'"
+```
+
+## Installation & Setup
+
+### Development Setup
+
+```bash
+# Install dependencies for all packages
+npm install
+
+# Build all packages
+npm run build
+
+# Start development server
+npm start -- --database development.db
+```
+
+### Production Deployment
+
+```bash
+# Install and build
+npm install
+npm run build
+
+# Start server with production settings
+npx control_chart server \
+  --database /path/to/production.db \
+  --port 8080 \
+  --host 0.0.0.0
+```
+
+## CLI Usage
+
+The `control_chart` command provides comprehensive CLI tools for automation and scripting.
+
+### Chart Initialization
+
+```bash
+# Create an individuals control chart
+npx control_chart init \
+  --database charts.db \
+  --chart_name "quality_metric" \
+  --data_name "measurement" \
+  --type "individuals" \
+  --aggregation_interval 86400000  # 1 day in milliseconds
+
+# Create a count chart for defects
+npx control_chart init \
+  --database charts.db \
+  --chart_name "defect_count" \
+  --data_name "defects" \
+  --type "counts"
+```
+
+### Data Collection
+
+```bash
+# Automated data collection from external command
+npx control_chart collect \
+  --database charts.db \
+  --name "temperature" \
+  --interval 1000 \
+  --command "cat /sys/class/thermal/thermal_zone0/temp"
+
+# Manual data entry via stdin
+npx control_chart collect \
+  --database charts.db \
+  --name "manual_measurements"
+# Then type values, one per line
+```
+
+### Data Export
+
+```bash
+# Export chart data as JSON
+npx control_chart chart \
+  --database charts.db \
+  --chart_name "production_line_1" \
+  --start_time "2024-01-01T00:00:00Z" \
+  --end_time "2024-01-31T23:59:59Z"
+```
+
+### Data Transformations
+
+```bash
+# Apply logarithmic transformation
+npx control_chart transform \
+  --database charts.db \
+  --chart_name "production_line_1" \
+  --transformation "log"
+
+# Remove transformation
+npx control_chart transform \
+  --database charts.db \
+  --chart_name "production_line_1" \
+  --transformation "none"
+```
+
+### Server Management
+
+```bash
+# Start web server
+npx control_chart server \
+  --database charts.db \
+  --port 42069 \
+  --host localhost
+```
+
+## Web Interface
+
+### Chart Creation
+1. Navigate to the web interface
+2. Click "Create New Chart"
+3. Configure chart parameters:
+   - Chart name and data source
+   - Chart type (individuals/counts)
+   - Aggregation interval
+   - Optional data transformations
+
+### Interactive Features
+- **Zoom & Pan**: Mouse wheel to zoom, drag to pan
+- **Data Annotation**: Click data points to add contextual notes
+- **Time Range Selection**: Use date picker for focused analysis
+- **Real-time Updates**: Charts refresh automatically with new data
+- **Multiple Views**: Switch between control chart, histogram, and statistics
+
+### Chart Management
+- View all available charts
+- Configure setup intervals for control limits
+- Apply data transformations in real-time
+- Export chart data and images
+
+## API Reference
+
+### REST Endpoints
+
+#### Chart Management
+```http
+GET /availableCharts
+GET /availableDataNames
+GET /chart/{chartName}
+POST /createChart/{chartName}
+```
+
+#### Data Access
+```http
+GET /chart/{chartName}/startTime/{startTime}/endTime/{endTime}/data
+GET /chart/{chartName}/recent/{count}/data
+GET /chart/{chartName}/setup/data
+```
+
+#### Data Collection
+```http
+POST /addObservation
+POST /dataPoint/{dataPointId}/annotate
+GET /dataPoint/{dataPointId}/annotation
+```
+
+### Example API Usage
+
+```javascript
+// Add a new observation
+fetch('/addObservation', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    value: 23.5,
+    dataName: 'temperature',
+    annotations: 'Measured after calibration'
+  })
+});
+
+// Get recent chart data
+const response = await fetch('/chart/production_line_1/recent/100/data');
+const chartData = await response.json();
+```
 
 ## Architecture
-The application follows a monorepo structure, separating concerns into `backend` and `frontend` packages.
 
-- **Backend**: Provides a CLI for data collection and chart initialization, and a Fastify web server exposing REST APIs for data management, statistical calculations, and serving frontend assets.
-- **Database**: Uses SQLite for persistent storage of observations, chart configurations, and annotations. Leverages SQL temporary views for efficient on-the-fly statistical computations.
-- **Frontend**: A web-based interface built with HTML, CSS, and JavaScript (TypeScript). It uses Chart.js for interactive data visualization, allowing users to select, view, and create control charts.
+### Project Structure
+```
+control_chart/
+├── packages/
+│   ├── backend/           # Node.js/TypeScript server & CLI
+│   │   ├── src/
+│   │   │   ├── index.ts   # CLI entry point
+│   │   │   ├── server.ts  # Web server
+│   │   │   ├── chartDb.ts # Database layer
+│   │   │   └── stats.ts   # Statistical functions
+│   │   └── dist/          # Compiled JavaScript
+│   └── frontend/          # TypeScript/Chart.js web interface
+│       ├── src/
+│       │   ├── index.html      # Landing page
+│       │   ├── chart.html      # Chart viewer
+│       │   ├── create-chart.html # Chart creation
+│       │   └── controlChart.ts  # Chart logic
+│       └── dist/          # Built assets
+├── memory-bank/           # Project documentation
+└── package.json          # Workspace configuration
+```
 
-## Setup and Installation
+### Technology Stack
 
-1.  **Clone the repository**:
-    ```bash
-    git clone [repository-url]
-    cd control_chart
-    ```
-2.  **Install dependencies**:
-    The project uses npm workspaces.
-    ```bash
-    npm install
-    ```
-3.  **Build the project**:
-    ```bash
-    npm run build
-    ```
+**Backend:**
+- **Node.js** + **TypeScript** - Modern JavaScript runtime with type safety
+- **Fastify** - High-performance web framework
+- **SQLite** + **better-sqlite3** - Embedded database with custom functions
+- **@stdlib/stats** - Comprehensive statistical computing library
+- **yargs** - Command-line interface framework
 
-## Usage
+**Frontend:**
+- **Chart.js** - Canvas-based interactive charting
+- **Bootstrap** - Responsive UI framework
+- **Parcel** - Zero-configuration build tool
+- **TypeScript** - Type-safe frontend development
 
-### Command Line Interface (CLI)
-The backend provides a CLI for various operations. Navigate to the project root and run commands using `npm run start --workspace=backend -- [command]`.
+**Database:**
+- **SQLite** with custom aggregate and scalar functions
+- Optimized time-series storage and indexing
+- Window functions for statistical calculations
+- WAL mode for concurrent access
 
--   **Initialize a new chart**:
-    ```bash
-    npm run start --workspace=backend -- init -d mychart.db -c my_process_chart -n process_data -t individuals -g 86400000
-    ```
-    (This initializes an 'individuals' chart named 'my_process_chart' using 'process_data' from 'mychart.db', aggregating daily.)
+## Development
 
--   **Collect data (from command output)**:
-    ```bash
-    npm run start --workspace=backend -- collect -d mychart.db -n process_data --command "your_data_generating_command" -i 5000
-    # Runs "your_data_generating_command" every 5 seconds and collects its output
-    ```
+### Building from Source
 
--   **Start the web UI**:
-    ```bash
-    npm run start --workspace=backend -- server -d mychart.db -p 3000
-    ```
-    (Starts the web server on port 3000, serving data from `mychart.db`.)
+```bash
+# Install dependencies
+npm install
 
-### Web Interface
-Once the web UI is running (e.g., on `http://localhost:3000`), open your browser and navigate to the specified address.
--   **Select Chart**: Choose an existing chart from the dropdown on the landing page.
--   **Create New Chart**: Click "Create New Chart" to define a new control chart.
--   **View Chart**: Explore interactive charts with zoom, pan, data transformations, and statistical tests.
--   **Annotate Data Points**: Click on a data point to add contextual annotations.
+# Build all packages
+npm run build
 
-## Contributing
-Contributions are welcome! Please feel free to submit issues or pull requests.
+# Build individual packages
+npm run build --workspace=backend
+npm run build --workspace=frontend
+```
+
+### Development Workflow
+
+```bash
+# Start development server with auto-reload
+npm start -- --database dev.db
+
+# Build and watch for changes (in separate terminals)
+cd packages/backend && npx tsc --watch
+cd packages/frontend && npx parcel watch
+```
+
+### Testing
+
+```bash
+# Run example data collection
+cd packages/backend/src/tests
+node example.ts
+
+# Test API endpoints
+curl http://localhost:42069/availableCharts
+```
+
+## Use Cases
+
+### Manufacturing Quality Control
+```bash
+# Monitor part dimensions
+npx control_chart init -d factory.db -c "part_diameter" -n "diameter" -t "individuals"
+npx control_chart collect -d factory.db -n "diameter" -i 30000 -c "measure_part.sh"
+```
+
+### Service Performance Monitoring
+```bash
+# Track response times
+npx control_chart init -d service.db -c "api_response" -n "response_time" -t "individuals"
+npx control_chart collect -d service.db -n "response_time" -i 60000 -c "curl -w '%{time_total}' -s api.example.com"
+```
+
+### Process Capability Studies
+1. Collect baseline data during stable operation
+2. Set setup intervals to establish control limits
+3. Monitor ongoing process performance
+4. Detect shifts and trends using CUSUM charts
+
+## Configuration
+
+### Environment Variables
+- `NODE_ENV` - Development/production mode
+- `PORT` - Server port override
+- `HOST` - Server bind address
+- `DATABASE_PATH` - Default database location
+
+### Database Configuration
+- Automatic table creation on first run
+- Custom SQL functions for statistical calculations
+- Configurable aggregation intervals
+- Efficient indexing for time-series queries
+
+## Performance
+
+### Scalability
+- **Data Points**: Handles millions of observations efficiently
+- **Charts**: Supports hundreds of concurrent charts
+- **Users**: Single-writer database suitable for team use
+- **Real-time**: Sub-second response times for interactive features
+
+### Optimization Features
+- **Data Reduction**: 1000-point sampling for large datasets
+- **Efficient Queries**: Window functions and prepared statements
+- **Client Caching**: Smart frontend data caching
+- **Lazy Loading**: On-demand chart data loading
 
 ## License
-MIT
+
+ISC License - See LICENSE file for details.
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes with tests
+4. Submit a pull request
+
+## Support
+
+- **Documentation**: See memory-bank/ directory for detailed technical docs
+- **Issues**: Report bugs and feature requests via GitHub issues
+- **Examples**: Check packages/backend/src/tests/ for usage examples
+
+---
+
+**Built for quality control professionals who demand statistical rigor and operational excellence.**
