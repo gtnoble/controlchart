@@ -404,7 +404,6 @@ ISC License - See LICENSE file for details.
 
 ## Support
 
-- **Documentation**: See memory-bank/ directory for detailed technical docs
 - **Issues**: Report bugs and feature requests via GitHub issues
 - **Examples**: Check packages/backend/src/tests/ for usage examples
 
